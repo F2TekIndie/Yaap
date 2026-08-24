@@ -1,0 +1,11 @@
+/build/
+# Yaap uses the global vcpkg installed tree; never retain a project-local copy.
+/vcpkg_installed/
+/.tools/
+/CMakeUserPresets.json
+/.vs/
+/.vscode/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
