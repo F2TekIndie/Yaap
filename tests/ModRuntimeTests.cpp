@@ -1,4 +1,5 @@
 #include "mods/ExtensionRegistry.hpp"
+#include "mods/ModManager.hpp"
 #include "mods/ModManifestParser.hpp"
 #include "mods/PermissionStore.hpp"
 #include "mods/ThemeManager.hpp"
@@ -92,6 +93,44 @@ TEST_CASE("Theme activation is atomic and extension activation requires permissi
     REQUIRE(permissions.grantDeclared(ui, error));
     extensions.rebuild({ui});
     CHECK(extensions.rowCount() == 1);
+}
+
+TEST_CASE("Every bundled sample theme is a valid selectable package")
+{
+    const QDir sampleMods{QString::fromUtf8(YAAP_SAMPLE_MODS_PATH)};
+    const auto themePackages = sampleMods.entryList(
+        {"*-theme"}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    REQUIRE(themePackages.size() >= 4);
+
+    ThemeManager themes;
+    for (const auto& package : themePackages) {
+        CAPTURE(package.toStdString());
+        const auto parsed = ModManifestParser::parsePackage(sampleMods.filePath(package));
+        INFO(parsed.error.toStdString());
+        REQUIRE(parsed.succeeded());
+        REQUIRE(parsed.manifest.hasKind(ModKind::Theme));
+
+        QString error;
+        REQUIRE(themes.registerTheme(parsed.manifest, error));
+        INFO(error.toStdString());
+        REQUIRE(themes.selectTheme(parsed.manifest.id, error));
+        CHECK(themes.currentThemeId() == parsed.manifest.id);
+    }
+}
+
+TEST_CASE("Mod manager can grant enable and select a bundled theme")
+{
+    PermissionStore permissions;
+    ThemeManager themes;
+    ExtensionRegistry extensions{permissions};
+    ModManager mods{permissions, themes, extensions,
+        {QString::fromUtf8(YAAP_SAMPLE_MODS_PATH)}};
+
+    constexpr auto themeId = "org.yaap.paper-theme";
+    REQUIRE(mods.grantDeclared(themeId));
+    REQUIRE(mods.activateTheme(themeId));
+    CHECK(themes.currentThemeId() == themeId);
+    CHECK(themes.windowTop() == QColor{"#f8f1e4"});
 }
 
 } // namespace yaap

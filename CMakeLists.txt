@@ -400,7 +400,10 @@ if(BUILD_TESTING)
       Qt6::Core
   )
   target_compile_definitions(
-    yaap_tests PRIVATE YAAP_SAMPLE_PROVIDER_PATH="$<TARGET_FILE:yaap_sample_provider>"
+    yaap_tests
+    PRIVATE
+      YAAP_SAMPLE_MODS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/samples/mods"
+      YAAP_SAMPLE_PROVIDER_PATH="$<TARGET_FILE:yaap_sample_provider>"
   )
   yaap_enable_warnings(yaap_tests)
 

@@ -16,6 +16,16 @@ ApplicationWindow {
     visible: true
     title: "Yaap — Music player prototype"
     color: Theme.windowBottom
+    palette.window: Theme.surface
+    palette.windowText: Theme.primaryText
+    palette.base: Theme.windowBottom
+    palette.alternateBase: Theme.surface
+    palette.text: Theme.primaryText
+    palette.button: Theme.surface
+    palette.buttonText: Theme.primaryText
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.windowBottom
+    palette.placeholderText: Theme.secondaryText
 
     function formatTime(milliseconds) {
         const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -72,15 +82,22 @@ ApplicationWindow {
         id: trustDialog
         property string pendingModId
         property var requestedPermissions: []
+        property bool activateThemeAfterGrant: false
 
         title: "Trust third-party mod?"
         modal: true
         anchors.centerIn: parent
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
-            if (Mods.grantDeclared(pendingModId))
-                Mods.setEnabled(pendingModId, true)
+            if (Mods.grantDeclared(pendingModId)) {
+                if (activateThemeAfterGrant)
+                    Mods.activateTheme(pendingModId)
+                else
+                    Mods.setEnabled(pendingModId, true)
+            }
+            activateThemeAfterGrant = false
         }
+        onRejected: activateThemeAfterGrant = false
 
         ColumnLayout {
             width: 500
@@ -171,6 +188,7 @@ ApplicationWindow {
                                     } else {
                                         trustDialog.pendingModId = modId
                                         trustDialog.requestedPermissions = permissions
+                                        trustDialog.activateThemeAfterGrant = false
                                         trustDialog.open()
                                     }
                                 }
@@ -183,6 +201,7 @@ ApplicationWindow {
                                     if (!permissionsGranted) {
                                         trustDialog.pendingModId = modId
                                         trustDialog.requestedPermissions = permissions
+                                        trustDialog.activateThemeAfterGrant = true
                                         trustDialog.open()
                                     } else {
                                         Mods.activateTheme(modId)

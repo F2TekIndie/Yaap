@@ -66,3 +66,6 @@ launches enabled providers with a random local-socket name, a one-time nonce,
 and protocol version. See [provider-protocol.md](provider-protocol.md).
 
 The sample packages under `samples/mods` demonstrate all three package kinds.
+Bundled theme examples include Ocean, the warm light Paper theme, neon
+Synthwave, and a deliberately square High Contrast theme. They are copied into
+the runnable development distribution and can be enabled from the Mods dialog.
