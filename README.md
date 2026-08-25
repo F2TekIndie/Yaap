@@ -1,14 +1,37 @@
 # Yaap prototype
 
-Yaap is a C++20/Qt Quick music-player prototype. Its first vertical slice opens
-a local file, decodes it through FFmpeg to 48 kHz stereo float PCM, and sends
-that PCM to a miniaudio playback device.
+Yaap is a C++20/Qt Quick music-player prototype. It plays local files and HTTP
+streams through FFmpeg, a bounded SPSC PCM ring, and miniaudio. It also contains
+the first complete service layer for a watched SQLite music library, station
+playlists, OpenSubsonic, Jellyfin, and operating-system credential storage.
+
+## Implemented architecture
+
+- Continuous FFmpeg producer with interruptible I/O, 15-second deadlines,
+  seeking, prebuffering, cancellation, and network reconnect options.
+- Real-time-safe miniaudio consumer backed by a bounded 48 kHz stereo float
+  SPSC ring. Decoder shutdown is retired to a reaper thread, never joined by the
+  GUI thread.
+- Explicit track, queue, provider, playlist, and playback-session domain models.
+- SQLite library synchronization, FFmpeg metadata and embedded-artwork
+  extraction, recursive folder scans, filesystem watching, and playlists.
+- M3U/M3U8, PLS, and XSPF parsing; incremental ICY metadata demuxing; bounded
+  HTTP playlist loading; and capped exponential reconnect behavior.
+- Asynchronous OpenSubsonic search/stream URL generation and Jellyfin
+  authentication/library loading through Qt Network.
+- Windows Credential Manager, macOS Keychain, and Linux Secret Service
+  credential backends. Passwords are never written to Yaap's database.
+- Extension API 1.0 with validated manifests, data-only theme packs, declared
+  QML extension slots, explicit permission grants, and sample mod packages.
+- Length-framed, bounded local IPC plus an asynchronous C++ provider SDK and
+  supervised out-of-process sample provider.
 
 ## Dependencies
 
 - CMake 4.2 or newer
 - Visual Studio 2026 or 2022 on Windows
-- Qt 6.5 or newer with Qt Quick, Quick Controls, and Quick Dialogs
+- Qt 6.5 or newer with Core, Concurrent, Network, SQL/SQLite, Qt Quick, Quick
+  Controls, and Quick Dialogs
 - FFmpeg development libraries: `avformat`, `avcodec`, `avutil`, `swresample`
 - miniaudio
 - Catch2 3
@@ -56,21 +79,32 @@ The VS 2022 preset generates the traditional `Yaap.sln` format instead.
 
 Every shortcut is also marked with `PROTOTYPE` at its implementation site.
 
-1. **Whole-file decoding:** `FFmpegDecoder` decodes the complete track into one
-   PCM vector. Replace it with a decode worker feeding a bounded SPSC ring
-   buffer before adding radio, long tracks, seeking, or gapless playback.
-2. **Polled playback state:** `PlayerController` reads position and completion
+1. **Polled playback state:** `PlayerController` reads position and completion
    every 100 ms. Replace this with coalesced playback snapshots from a dedicated
    playback-control layer.
-3. **Synchronous worker cancellation:** opening a second file joins the previous
-   local-file decoder from the GUI thread. Replace it with asynchronous shutdown,
-   FFmpeg interrupt callbacks, and I/O deadlines before network playback.
-4. **Single fixed output format:** all audio is currently 48 kHz stereo float.
+2. **Polled producer backpressure:** a full PCM ring makes the non-real-time
+   decoder worker wait in short intervals. Fold this into the asynchronous
+   playback-session cancellation mechanism without adding work to the audio
+   callback.
+3. **Full rescans for watched changes:** directory notifications trigger a
+   debounced recursive rescan. Replace this with an incremental change journal
+   for very large libraries.
+4. **Linux credential adapter:** Linux currently invokes `secret-tool` as an
+   adapter to Secret Service. Replace this with a directly linked libsecret or
+   D-Bus backend for product packaging.
+5. **First-station playlist action:** the prototype UI opens the first valid
+   entry in a station playlist. The parser and loader return every entry; a full
+   station browser still needs to expose that collection.
+6. **Single fixed output format:** all audio is currently 48 kHz stereo float.
    Keep this as the internal mixer format initially, then add explicit device
    negotiation and a measured resampling policy.
-5. **One controller exposed to QML:** this is a narrow vertical-slice boundary,
-   not the future plugin API. Mods will receive versioned models and declared UI
-   extension points rather than the application controller.
+7. **Manual mod discovery:** packages are scanned at startup or through the Mods
+   dialog. Add atomic install/update/remove operations before watching this
+   directory or accepting remotely obtained packages.
+8. **Trusted extension execution:** QML extensions run in-process and native
+   providers run as the current user. Permissions currently express consent and
+   feature gating, not OS-enforced containment. The post-1.0 roadmap moves
+   package identity and process hardening ahead of remote distribution.
 
 The miniaudio callback is not a shortcut: it performs no allocation, locking,
 logging, decoding, Qt calls, or file access.
@@ -84,23 +118,11 @@ a separate release review.
 
 ## Next steps toward the full version
 
-1. Replace whole-file PCM storage with a bounded SPSC ring buffer and continuous
-   FFmpeg producer thread.
-2. Add interruptible FFmpeg I/O, buffering state, timeouts, seeking, and clean
-   asynchronous shutdown.
-3. Introduce queue, track, provider, and playback-session domain models outside
-   the Qt-facing controller.
-4. Add SQLite library indexing, metadata/artwork extraction, folder watching,
-   playlists, and durable settings.
-5. Add HTTP radio, M3U/PLS/XSPF parsing, ICY metadata, reconnect, and backoff.
-6. Implement OpenSubsonic and Jellyfin providers with credentials stored in each
-   operating system's secure credential store.
-7. Create versioned theme packs, declared QML extension points, plugin manifests,
-   permissions, and an out-of-process provider SDK.
-8. Add seeking, ReplayGain, gapless playback, crossfade, EQ, visualizers, output
-   selection, and OS media-session controls.
-9. Add Linux/macOS CI, sanitizers, fuzz tests for parsers, accessibility,
-   localization, crash recovery, telemetry policy, and performance budgets.
-10. Promote the development distribution to CMake install rules and CPack
-    installers; add signing/notarization, SBOM, third-party notices, update
-    delivery, and clean-machine release tests.
+The versioned mod and provider foundation is implemented. The reevaluated
+[steps 8–15](docs/roadmap.md) now prioritize application-domain integration,
+accounts, package identity, and process containment before richer browsing,
+caching, ecosystem tooling, and remote distribution.
+
+Audio-product work remains parallel to that extension roadmap: ReplayGain,
+gapless playback, crossfade, EQ, visualizers, output selection, and OS media
+session controls.

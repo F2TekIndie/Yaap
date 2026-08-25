@@ -3,31 +3,53 @@
 #include "audio/FFmpegDecoder.hpp"
 
 #include <QFileInfo>
+#include <QDebug>
 #include <QMetaObject>
 #include <QPointer>
-#include <QDebug>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
 namespace yaap {
+namespace {
+
+[[nodiscard]] std::filesystem::path filesystemPath(const QString& path)
+{
+#ifdef _WIN32
+    return std::filesystem::path{path.toStdWString()};
+#else
+    const auto encoded = path.toUtf8();
+    return std::filesystem::path{
+        std::string{encoded.constData(), static_cast<std::size_t>(encoded.size())}};
+#endif
+}
+
+} // namespace
 
 PlayerController::PlayerController(QObject* parent)
     : QObject(parent)
 {
-    // PROTOTYPE: Position/end state is polled from atomics. The streaming version
-    // should publish coalesced playback snapshots from a dedicated control layer.
+    // PROTOTYPE: Position/end state is polled from atomics. The full playback
+    // control layer should publish coalesced PlaybackSessionSnapshot updates.
     m_positionTimer.setInterval(100);
     m_positionTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_positionTimer, &QTimer::timeout, this, &PlayerController::updatePosition);
     m_positionTimer.start();
+    m_reconnectTimer.setSingleShot(true);
+    connect(&m_reconnectTimer, &QTimer::timeout, this, [this] {
+        m_reconnectScheduled = false;
+        startStream(StreamStartMode::AutoPlay, false);
+    });
 }
 
 PlayerController::~PlayerController()
 {
     m_positionTimer.stop();
-    m_output.stop();
+    m_reconnectTimer.stop();
+    m_output.clear();
     cancelDecode();
+    m_stream.reset();
 }
 
 QString PlayerController::title() const
@@ -78,10 +100,15 @@ bool PlayerController::isLoading() const noexcept
     return m_stateMachine.state() == PlaybackState::Loading;
 }
 
+bool PlayerController::isBuffering() const noexcept
+{
+    return m_stateMachine.state() == PlaybackState::Buffering;
+}
+
 void PlayerController::openFile(const QUrl& url)
 {
     if (!url.isLocalFile()) {
-        setError("The prototype currently accepts local files only.");
+        setError("Open file accepts local URLs; use Open stream for HTTP(S) audio.");
         return;
     }
 
@@ -91,26 +118,136 @@ void PlayerController::openFile(const QUrl& url)
         return;
     }
 
-    m_output.stop();
+    m_sourcePath = filesystemPath(localPath);
+    m_sourceUrl.clear();
+    m_sourceIsNetwork = false;
+    m_sourceFallbackTitle = QFileInfo(localPath).completeBaseName();
+    startStream(StreamStartMode::Ready, true);
+}
+
+void PlayerController::openStream(const QUrl& url, const QString& title)
+{
+    if (!url.isValid() || (url.scheme() != "http" && url.scheme() != "https")) {
+        setError("A valid HTTP or HTTPS stream URL is required.");
+        return;
+    }
+    m_sourceUrl = url.toString(QUrl::FullyEncoded).toStdString();
+    m_sourcePath.clear();
+    m_sourceIsNetwork = true;
+    m_sourceFallbackTitle = title.trimmed().isEmpty() ? url.host() : title.trimmed();
+    startStream(StreamStartMode::AutoPlay, true);
+}
+
+void PlayerController::openRadioPlaylist(const QUrl& url)
+{
+    m_radioPlaylistLoader.load(url, [this](RadioPlaylistResult result) {
+        if (!result.succeeded()) {
+            setError(std::move(result.error));
+            return;
+        }
+        if (result.stations.empty()) {
+            setError("The radio playlist contains no supported HTTP(S) stations.");
+            return;
+        }
+        const auto& station = result.stations.front();
+        openStream(station.streamUrl, station.name);
+    });
+}
+
+void PlayerController::startStream(
+    const StreamStartMode mode,
+    const bool resetPresentation,
+    const qint64 startPositionMilliseconds)
+{
+    if ((!m_sourceIsNetwork && m_sourcePath.empty())
+        || (m_sourceIsNetwork && m_sourceUrl.empty())) {
+        setError("No input file was selected.");
+        return;
+    }
+
+    m_output.clear();
     cancelDecode();
     const auto generation = m_generation.fetch_add(1, std::memory_order_acq_rel) + 1;
 
-    m_title = QFileInfo(localPath).completeBaseName();
+    if (resetPresentation) {
+        m_reconnectTimer.stop();
+        m_reconnectAttempt = 0;
+        m_reconnectScheduled = false;
+        m_title = m_sourceFallbackTitle;
+        emit titleChanged();
+    }
     m_errorMessage.clear();
-    m_positionMilliseconds = 0;
+    m_positionMilliseconds = std::max<qint64>(startPositionMilliseconds, 0);
     m_durationMilliseconds = 0;
-    emit titleChanged();
+    m_lastUnderrunCount = 0;
     emit errorMessageChanged();
     emit positionChanged();
     emit durationChanged();
     setState(PlaybackState::Loading);
 
-    const std::filesystem::path sourcePath{localPath.toStdWString()};
+    auto stream = std::make_shared<PcmStream>();
+    m_stream = stream;
+    std::string outputError;
+    if (!m_output.attach(stream, outputError)) {
+        setError(QString::fromUtf8(outputError));
+        return;
+    }
+
+    const auto sourcePath = m_sourcePath;
+    const auto sourceUrl = m_sourceUrl;
+    const auto sourceIsNetwork = m_sourceIsNetwork;
     QPointer<PlayerController> guardedThis{this};
     m_decodeThread = std::jthread(
-        [guardedThis, generation, sourcePath](const std::stop_token stopToken) {
+        [guardedThis, generation, sourcePath, sourceUrl, sourceIsNetwork, stream, mode,
+            startPositionMilliseconds](
+            const std::stop_token stopToken) {
             FFmpegDecoder decoder;
-            auto sharedResult = std::make_shared<DecodeResult>(decoder.decode(sourcePath, stopToken));
+            const auto readyCallback = [guardedThis, generation, stream, mode](
+                                           const AudioStreamInfo& info) {
+                if (!guardedThis) {
+                    return;
+                }
+
+                QMetaObject::invokeMethod(
+                    guardedThis,
+                    [guardedThis, generation, stream, mode, info] {
+                        if (!guardedThis
+                            || generation != guardedThis->m_generation.load(std::memory_order_acquire)
+                            || guardedThis->m_stream != stream) {
+                            return;
+                        }
+
+                        if (!info.title.empty()) {
+                            guardedThis->m_title = QString::fromUtf8(info.title);
+                            emit guardedThis->titleChanged();
+                        }
+                        guardedThis->m_durationMilliseconds =
+                            static_cast<qint64>(stream->durationMilliseconds());
+                        guardedThis->m_positionMilliseconds =
+                            static_cast<qint64>(stream->positionMilliseconds());
+                        emit guardedThis->durationChanged();
+                        emit guardedThis->positionChanged();
+                        guardedThis->setState(PlaybackState::Ready);
+
+                        if (mode == StreamStartMode::Stopped) {
+                            guardedThis->setState(PlaybackState::Stopped);
+                        } else if (mode == StreamStartMode::Paused) {
+                            guardedThis->setState(PlaybackState::Paused);
+                        } else if (mode == StreamStartMode::AutoPlay) {
+                            guardedThis->play();
+                        }
+                    },
+                    Qt::QueuedConnection);
+            };
+
+            StreamOptions streamOptions;
+            streamOptions.startPositionMilliseconds = startPositionMilliseconds;
+            streamOptions.reconnectNetworkStream = sourceIsNetwork;
+            auto sharedResult = std::make_shared<StreamDecodeResult>(sourceIsNetwork
+                ? decoder.streamUrl(sourceUrl, *stream, readyCallback,
+                    std::move(streamOptions), stopToken)
+                : decoder.streamFile(sourcePath, *stream, readyCallback,
+                    std::move(streamOptions), stopToken));
 
             if (!guardedThis) {
                 return;
@@ -118,7 +255,7 @@ void PlayerController::openFile(const QUrl& url)
 
             QMetaObject::invokeMethod(
                 guardedThis,
-                [guardedThis, generation, sourcePath, sharedResult = std::move(sharedResult)]() mutable {
+                [guardedThis, generation, sharedResult = std::move(sharedResult)]() mutable {
                     if (!guardedThis || generation != guardedThis->m_generation.load(std::memory_order_acquire)) {
                         return;
                     }
@@ -126,30 +263,21 @@ void PlayerController::openFile(const QUrl& url)
                         return;
                     }
                     if (!sharedResult->succeeded()) {
-                        guardedThis->setError(QString::fromUtf8(sharedResult->error));
+                        const auto error = QString::fromUtf8(sharedResult->error);
+                        if (guardedThis->m_sourceIsNetwork) {
+                            guardedThis->scheduleReconnect(error);
+                        } else {
+                            guardedThis->setError(error);
+                        }
                         return;
                     }
 
-                    auto audio = std::move(*sharedResult->audio);
-                    if (!audio.title.empty()) {
-                        guardedThis->m_title = QString::fromUtf8(audio.title);
-                        emit guardedThis->titleChanged();
-                    } else if (guardedThis->m_title.isEmpty()) {
-                        guardedThis->m_title = QString::fromStdWString(sourcePath.stem().wstring());
-                        emit guardedThis->titleChanged();
+                    const auto finalDuration =
+                        static_cast<qint64>(guardedThis->m_output.durationMilliseconds());
+                    if (finalDuration != guardedThis->m_durationMilliseconds) {
+                        guardedThis->m_durationMilliseconds = finalDuration;
+                        emit guardedThis->durationChanged();
                     }
-
-                    std::string outputError;
-                    if (!guardedThis->m_output.load(std::move(audio), outputError)) {
-                        guardedThis->setError(QString::fromUtf8(outputError));
-                        return;
-                    }
-
-                    guardedThis->m_durationMilliseconds = guardedThis->m_output.durationMilliseconds();
-                    guardedThis->m_positionMilliseconds = 0;
-                    emit guardedThis->durationChanged();
-                    emit guardedThis->positionChanged();
-                    guardedThis->setState(PlaybackState::Ready);
                 },
                 Qt::QueuedConnection);
         });
@@ -157,6 +285,13 @@ void PlayerController::openFile(const QUrl& url)
 
 void PlayerController::play()
 {
+    if (m_stateMachine.state() == PlaybackState::Finished) {
+        // Replaying reopens the source because consumed frames are intentionally
+        // absent from the bounded streaming ring buffer.
+        startStream(StreamStartMode::AutoPlay, false);
+        return;
+    }
+
     if (!m_output.hasAudio()) {
         return;
     }
@@ -171,7 +306,8 @@ void PlayerController::play()
 
 void PlayerController::pause()
 {
-    if (m_stateMachine.state() != PlaybackState::Playing) {
+    if (m_stateMachine.state() != PlaybackState::Playing
+        && m_stateMachine.state() != PlaybackState::Buffering) {
         return;
     }
     m_output.pause();
@@ -180,13 +316,31 @@ void PlayerController::pause()
 
 void PlayerController::stop()
 {
-    if (!m_output.hasAudio()) {
+    if ((!m_sourceIsNetwork && m_sourcePath.empty())
+        || (m_sourceIsNetwork && m_sourceUrl.empty())) {
         return;
     }
-    m_output.stop();
-    m_positionMilliseconds = 0;
-    emit positionChanged();
-    setState(PlaybackState::Stopped);
+
+    // A stopped session owns no retained PCM, so reopen at frame zero.
+    startStream(StreamStartMode::Stopped, false);
+}
+
+void PlayerController::seek(const qint64 positionMilliseconds)
+{
+    if ((!m_sourceIsNetwork && m_sourcePath.empty()) || m_sourceIsNetwork
+        || m_durationMilliseconds <= 0) {
+        return;
+    }
+
+    const auto target = std::clamp<qint64>(
+        positionMilliseconds, 0, m_durationMilliseconds);
+    const auto state = m_stateMachine.state();
+    const auto mode = state == PlaybackState::Playing || state == PlaybackState::Buffering
+        ? StreamStartMode::AutoPlay
+        : state == PlaybackState::Paused
+            ? StreamStartMode::Paused
+            : StreamStartMode::Ready;
+    startStream(mode, false, target);
 }
 
 void PlayerController::cancelDecode()
@@ -196,11 +350,7 @@ void PlayerController::cancelDecode()
     }
 
     m_generation.fetch_add(1, std::memory_order_acq_rel);
-    m_decodeThread.request_stop();
-    // PROTOTYPE: joining here can briefly block the GUI if a local filesystem
-    // operation stalls. The streaming worker will use asynchronous shutdown and
-    // interruptible FFmpeg I/O callbacks with explicit timeouts.
-    m_decodeThread.join();
+    m_taskReaper.retire(std::move(m_decodeThread));
 }
 
 void PlayerController::setState(const PlaybackState state)
@@ -216,7 +366,8 @@ void PlayerController::setState(const PlaybackState state)
 
 void PlayerController::setError(QString message)
 {
-    m_output.stop();
+    m_output.clear();
+    m_stream.reset();
     m_errorMessage = std::move(message);
     emit errorMessageChanged();
     setState(PlaybackState::Error);
@@ -230,9 +381,56 @@ void PlayerController::updatePosition()
         emit positionChanged();
     }
 
-    if (m_stateMachine.state() == PlaybackState::Playing && m_output.isFinished()) {
-        setState(PlaybackState::Finished);
+    const auto duration = static_cast<qint64>(m_output.durationMilliseconds());
+    if (duration > 0 && duration != m_durationMilliseconds) {
+        m_durationMilliseconds = duration;
+        emit durationChanged();
     }
+
+    if ((m_stateMachine.state() == PlaybackState::Playing
+            || m_stateMachine.state() == PlaybackState::Buffering)
+        && m_output.isFinished()) {
+        m_output.pause();
+        setState(PlaybackState::Finished);
+        if (m_sourceIsNetwork) {
+            scheduleReconnect("The stream ended.");
+        }
+        return;
+    }
+
+    if (m_stateMachine.state() == PlaybackState::Playing) {
+        const auto underruns = m_output.underrunCount();
+        if (underruns != m_lastUnderrunCount) {
+            m_lastUnderrunCount = underruns;
+            m_output.pause();
+            setState(PlaybackState::Buffering);
+        }
+    } else if (m_stateMachine.state() == PlaybackState::Buffering
+        && (m_output.bufferedMilliseconds() >= 250
+            || (m_output.isEndOfStream() && m_output.bufferedMilliseconds() > 0))) {
+        std::string error;
+        if (!m_output.play(error)) {
+            setError(QString::fromUtf8(error));
+            return;
+        }
+        setState(PlaybackState::Playing);
+    }
+}
+
+void PlayerController::scheduleReconnect(QString reason)
+{
+    if (!m_sourceIsNetwork || m_reconnectScheduled) {
+        return;
+    }
+    m_output.pause();
+    m_errorMessage = std::move(reason) + " Reconnecting…";
+    emit errorMessageChanged();
+    if (m_stateMachine.state() != PlaybackState::Finished) {
+        setState(PlaybackState::Buffering);
+    }
+    const auto delay = m_reconnectPolicy.delayForAttempt(m_reconnectAttempt++);
+    m_reconnectScheduled = true;
+    m_reconnectTimer.start(static_cast<int>(delay.count()));
 }
 
 } // namespace yaap

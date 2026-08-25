@@ -1,9 +1,17 @@
 #include "audio/FFmpegDecoder.hpp"
 
+#include "audio/PcmFormat.hpp"
+
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <span>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -56,11 +64,88 @@ struct SwrContextDeleter final {
     }
 };
 
+struct DictionaryDeleter final {
+    void operator()(AVDictionary* dictionary) const noexcept
+    {
+        av_dict_free(&dictionary);
+    }
+};
+
 using FormatContextPtr = std::unique_ptr<AVFormatContext, FormatContextDeleter>;
 using CodecContextPtr = std::unique_ptr<AVCodecContext, CodecContextDeleter>;
 using PacketPtr = std::unique_ptr<AVPacket, PacketDeleter>;
 using FramePtr = std::unique_ptr<AVFrame, FrameDeleter>;
 using SwrContextPtr = std::unique_ptr<SwrContext, SwrContextDeleter>;
+using DictionaryPtr = std::unique_ptr<AVDictionary, DictionaryDeleter>;
+
+class InterruptState final {
+public:
+    InterruptState(const std::stop_token stopToken, const std::chrono::milliseconds timeout)
+        : m_stopToken(stopToken)
+        , m_timeout(timeout)
+    {
+    }
+
+    void arm() noexcept
+    {
+        m_timedOut.store(false, std::memory_order_relaxed);
+        if (m_timeout.count() <= 0) {
+            m_deadlineNanoseconds.store(0, std::memory_order_release);
+            return;
+        }
+        const auto deadline = std::chrono::steady_clock::now() + m_timeout;
+        m_deadlineNanoseconds.store(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                deadline.time_since_epoch()).count(),
+            std::memory_order_release);
+    }
+
+    void disarm() noexcept
+    {
+        m_deadlineNanoseconds.store(0, std::memory_order_release);
+    }
+
+    [[nodiscard]] bool timedOut() const noexcept
+    {
+        return m_timedOut.load(std::memory_order_acquire);
+    }
+
+    [[nodiscard]] static int interrupt(void* opaque) noexcept
+    {
+        auto& state = *static_cast<InterruptState*>(opaque);
+        if (state.m_stopToken.stop_requested()) {
+            return 1;
+        }
+
+        const auto deadline = state.m_deadlineNanoseconds.load(std::memory_order_acquire);
+        if (deadline <= 0) {
+            return 0;
+        }
+        const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (now < deadline) {
+            return 0;
+        }
+        state.m_timedOut.store(true, std::memory_order_release);
+        return 1;
+    }
+
+private:
+    std::stop_token m_stopToken;
+    std::chrono::milliseconds m_timeout;
+    std::atomic<std::int64_t> m_deadlineNanoseconds{0};
+    std::atomic<bool> m_timedOut{false};
+};
+
+struct OperationResult final {
+    std::string error;
+    bool cancelled{};
+
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return error.empty() && !cancelled;
+    }
+};
 
 [[nodiscard]] std::string ffmpegError(const int code)
 {
@@ -77,31 +162,114 @@ using SwrContextPtr = std::unique_ptr<SwrContext, SwrContextDeleter>;
     return {value.begin(), value.end()};
 }
 
+[[nodiscard]] std::int64_t mediaDurationMilliseconds(const AVFormatContext& context)
+{
+    if (context.duration == AV_NOPTS_VALUE || context.duration <= 0) {
+        return 0;
+    }
+    return av_rescale_q(context.duration, AV_TIME_BASE_Q, AVRational{1, 1'000});
+}
+
 } // namespace
 
-DecodeResult FFmpegDecoder::decode(const std::filesystem::path& path, const std::stop_token stopToken) const
+StreamDecodeResult FFmpegDecoder::streamFile(
+    const std::filesystem::path& path,
+    PcmStream& destination,
+    ReadyCallback readyCallback,
+    StreamOptions options,
+    const std::stop_token stopToken) const
 {
-    // PROTOTYPE: The complete source is decoded into RAM. Replace this method with
-    // a packet-producing decode worker feeding a bounded SPSC PCM ring buffer.
-    // Keeping all FFmpeg details behind this boundary makes that replacement local.
+    if (path.empty()) {
+        return {.error = "No input file was selected."};
+    }
+    return streamInput(
+        utf8Path(path), destination, std::move(readyCallback), std::move(options), stopToken);
+}
+
+StreamDecodeResult FFmpegDecoder::streamUrl(
+    const std::string& url,
+    PcmStream& destination,
+    ReadyCallback readyCallback,
+    StreamOptions options,
+    const std::stop_token stopToken) const
+{
+    return streamInput(url, destination, std::move(readyCallback), std::move(options), stopToken);
+}
+
+StreamDecodeResult FFmpegDecoder::streamInput(
+    const std::string& input,
+    PcmStream& destination,
+    ReadyCallback readyCallback,
+    StreamOptions options,
+    const std::stop_token stopToken) const
+{
     if (stopToken.stop_requested()) {
         return {.cancelled = true};
     }
 
-    if (path.empty()) {
-        return {.error = "No input file was selected."};
+    if (input.empty()) {
+        return {.error = "No media source was selected."};
     }
 
-    AVFormatContext* rawFormatContext = nullptr;
-    const auto pathString = utf8Path(path);
-    auto resultCode = avformat_open_input(&rawFormatContext, pathString.c_str(), nullptr, nullptr);
+    InterruptState interruptState{stopToken, options.ioTimeout};
+    AVFormatContext* rawFormatContext = avformat_alloc_context();
+    if (rawFormatContext == nullptr) {
+        return {.error = "Could not allocate the FFmpeg format context."};
+    }
+    rawFormatContext->interrupt_callback = {
+        .callback = &InterruptState::interrupt,
+        .opaque = &interruptState};
+
+    AVDictionary* rawOpenOptions = nullptr;
+    const auto timeoutMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+        options.ioTimeout).count();
+    if (timeoutMicroseconds > 0) {
+        av_dict_set_int(&rawOpenOptions, "rw_timeout", timeoutMicroseconds, 0);
+    }
+    if (!options.userAgent.empty()) {
+        av_dict_set(&rawOpenOptions, "user_agent", options.userAgent.c_str(), 0);
+    }
+    if (!options.httpHeaders.empty()) {
+        av_dict_set(&rawOpenOptions, "headers", options.httpHeaders.c_str(), 0);
+    }
+    if (options.reconnectNetworkStream) {
+        av_dict_set(&rawOpenOptions, "reconnect", "1", 0);
+        av_dict_set(&rawOpenOptions, "reconnect_streamed", "1", 0);
+        av_dict_set(&rawOpenOptions, "reconnect_on_network_error", "1", 0);
+        av_dict_set(&rawOpenOptions, "reconnect_delay_max", "30", 0);
+    }
+    DictionaryPtr openOptions{rawOpenOptions};
+
+    interruptState.arm();
+    auto resultCode = avformat_open_input(
+        &rawFormatContext, input.c_str(), nullptr, &rawOpenOptions);
+    interruptState.disarm();
+    openOptions.release();
+    DictionaryPtr remainingOpenOptions{rawOpenOptions};
     if (resultCode < 0) {
-        return {.error = "Could not open the audio file: " + ffmpegError(resultCode)};
+        if (rawFormatContext != nullptr) {
+            avformat_free_context(rawFormatContext);
+        }
+        if (stopToken.stop_requested()) {
+            return {.cancelled = true};
+        }
+        if (interruptState.timedOut()) {
+            return {.error = "Opening the media source timed out."};
+        }
+        return {.error = "Could not open the media source: " + ffmpegError(resultCode)};
     }
     FormatContextPtr formatContext{rawFormatContext};
 
+    interruptState.arm();
     resultCode = avformat_find_stream_info(formatContext.get(), nullptr);
+    interruptState.disarm();
     if (resultCode < 0) {
+        if (stopToken.stop_requested()) {
+            return {.cancelled = true};
+        }
+        if (interruptState.timedOut()) {
+            return {.error = "Reading media stream information timed out."};
+        }
         return {.error = "Could not read media stream information: " + ffmpegError(resultCode)};
     }
 
@@ -142,7 +310,7 @@ DecodeResult FFmpegDecoder::decode(const std::filesystem::path& path, const std:
         &rawResampler,
         &outputLayout,
         AV_SAMPLE_FMT_FLT,
-        static_cast<int>(DecodedAudio::outputSampleRate),
+        static_cast<int>(PcmFormat::sampleRate),
         &codecContext->ch_layout,
         codecContext->sample_fmt,
         codecContext->sample_rate,
@@ -158,108 +326,253 @@ DecodeResult FFmpegDecoder::decode(const std::filesystem::path& path, const std:
         return {.error = "Could not initialize the audio resampler: " + ffmpegError(resultCode)};
     }
 
+    const auto startPosition = std::max<std::int64_t>(options.startPositionMilliseconds, 0);
+    destination.setStartPositionMilliseconds(startPosition);
+    if (startPosition > 0) {
+        const auto targetTimestamp = av_rescale_q(
+            startPosition,
+            AVRational{1, 1'000},
+            formatContext->streams[audioStreamIndex]->time_base);
+        interruptState.arm();
+        resultCode = avformat_seek_file(
+            formatContext.get(),
+            audioStreamIndex,
+            std::numeric_limits<std::int64_t>::min(),
+            targetTimestamp,
+            std::numeric_limits<std::int64_t>::max(),
+            AVSEEK_FLAG_BACKWARD);
+        interruptState.disarm();
+        if (resultCode < 0) {
+            if (stopToken.stop_requested()) {
+                return {.cancelled = true};
+            }
+            if (interruptState.timedOut()) {
+                return {.error = "Seeking the media source timed out."};
+            }
+            return {.error = "Could not seek in the media source: " + ffmpegError(resultCode)};
+        }
+        avcodec_flush_buffers(codecContext.get());
+    }
+
     PacketPtr packet{av_packet_alloc()};
     FramePtr frame{av_frame_alloc()};
     if (!packet || !frame) {
         return {.error = "Could not allocate FFmpeg decode buffers."};
     }
 
-    DecodedAudio decoded;
+    AudioStreamInfo streamInfo;
+    streamInfo.durationMilliseconds = mediaDurationMilliseconds(*formatContext);
+    destination.setDurationMilliseconds(streamInfo.durationMilliseconds);
     if (const auto* title = av_dict_get(formatContext->metadata, "title", nullptr, 0); title != nullptr) {
-        decoded.title = title->value;
+        streamInfo.title = title->value;
     }
 
-    const auto appendFrame = [&]() -> std::optional<std::string> {
-        const auto outputCapacity = static_cast<int>(av_rescale_rnd(
-            swr_get_delay(resampler.get(), codecContext->sample_rate) + frame->nb_samples,
-            DecodedAudio::outputSampleRate,
+    std::vector<float> convertedSamples;
+    std::size_t decodedFrameCount = 0;
+    bool readyWasPublished = false;
+    const auto requestedPrebufferFrames = static_cast<std::size_t>(std::max<std::int64_t>(
+        (options.prebufferDuration.count() * PcmFormat::sampleRate) / 1'000,
+        1));
+    const auto prebufferTargetFrames = std::min(
+        requestedPrebufferFrames,
+        std::max<std::size_t>(destination.capacityFrames() / 2, 1));
+
+    const auto writeSamples = [&](std::span<const float> samples) -> OperationResult {
+        while (!samples.empty()) {
+            if (stopToken.stop_requested()) {
+                return {.cancelled = true};
+            }
+
+            const auto writtenFrames = destination.write(samples);
+            if (writtenFrames == 0) {
+                // PROTOTYPE: The bounded producer polls for capacity while full.
+                // Replace this with a producer-side semaphore/notification if
+                // profiling shows the one-millisecond interruptible wait matters.
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+                continue;
+            }
+
+            decodedFrameCount += writtenFrames;
+            samples = samples.subspan(writtenFrames * PcmFormat::channels);
+            if (!readyWasPublished
+                && destination.bufferedFrames() >= prebufferTargetFrames) {
+                readyWasPublished = true;
+                if (readyCallback) {
+                    readyCallback(streamInfo);
+                }
+            }
+        }
+        return {};
+    };
+
+    const auto convertSamples = [&](const std::uint8_t* const* inputPlanes,
+                                    const int inputSampleCount) -> OperationResult {
+        const auto outputCapacity64 = av_rescale_rnd(
+            swr_get_delay(resampler.get(), codecContext->sample_rate) + inputSampleCount,
+            PcmFormat::sampleRate,
             codecContext->sample_rate,
-            AV_ROUND_UP));
-        if (outputCapacity <= 0) {
-            return std::nullopt;
+            AV_ROUND_UP);
+        if (outputCapacity64 <= 0) {
+            return {};
+        }
+        if (outputCapacity64 > std::numeric_limits<int>::max()) {
+            return {.error = "Decoded audio frame is too large to resample safely."};
         }
 
-        const auto oldSize = decoded.interleavedSamples.size();
-        decoded.interleavedSamples.resize(
-            oldSize + static_cast<std::size_t>(outputCapacity) * DecodedAudio::outputChannels);
+        const auto outputCapacity = static_cast<int>(outputCapacity64);
+        convertedSamples.resize(
+            static_cast<std::size_t>(outputCapacity) * PcmFormat::channels);
         std::uint8_t* outputPlanes[] = {
-            reinterpret_cast<std::uint8_t*>(decoded.interleavedSamples.data() + oldSize)};
-        const auto* const* inputPlanes = const_cast<const std::uint8_t* const*>(frame->extended_data);
+            reinterpret_cast<std::uint8_t*>(convertedSamples.data())};
 
         const auto converted = swr_convert(
             resampler.get(),
             outputPlanes,
             outputCapacity,
             inputPlanes,
-            frame->nb_samples);
+            inputSampleCount);
         if (converted < 0) {
-            decoded.interleavedSamples.resize(oldSize);
-            return "Could not resample decoded audio: " + ffmpegError(converted);
+            return {.error = "Could not resample decoded audio: " + ffmpegError(converted)};
         }
 
-        decoded.interleavedSamples.resize(
-            oldSize + static_cast<std::size_t>(converted) * DecodedAudio::outputChannels);
-        return std::nullopt;
+        const auto convertedSampleCount = static_cast<std::size_t>(converted) * PcmFormat::channels;
+        return writeSamples(std::span<const float>{convertedSamples}.first(convertedSampleCount));
     };
 
-    const auto receiveFrames = [&]() -> std::optional<std::string> {
+    const auto receiveFrames = [&]() -> OperationResult {
         while (true) {
+            if (stopToken.stop_requested()) {
+                return {.cancelled = true};
+            }
+
             const auto receiveResult = avcodec_receive_frame(codecContext.get(), frame.get());
             if (receiveResult == AVERROR(EAGAIN) || receiveResult == AVERROR_EOF) {
-                return std::nullopt;
+                return {};
             }
             if (receiveResult < 0) {
-                return "Could not decode an audio frame: " + ffmpegError(receiveResult);
+                return {.error = "Could not decode an audio frame: " + ffmpegError(receiveResult)};
             }
-            if (const auto error = appendFrame()) {
-                return error;
-            }
+
+            const auto* const* inputPlanes =
+                const_cast<const std::uint8_t* const*>(frame->extended_data);
+            auto operation = convertSamples(inputPlanes, frame->nb_samples);
             av_frame_unref(frame.get());
+            if (!operation.succeeded()) {
+                return operation;
+            }
         }
     };
 
-    while ((resultCode = av_read_frame(formatContext.get(), packet.get())) >= 0) {
+    const auto submitPacket = [&](const AVPacket* inputPacket) -> OperationResult {
+        auto sendResult = avcodec_send_packet(codecContext.get(), inputPacket);
+        if (sendResult == AVERROR(EAGAIN)) {
+            auto operation = receiveFrames();
+            if (!operation.succeeded()) {
+                return operation;
+            }
+            sendResult = avcodec_send_packet(codecContext.get(), inputPacket);
+        }
+        if (sendResult < 0 && sendResult != AVERROR_EOF) {
+            return {.error = "Could not submit audio data to the decoder: " + ffmpegError(sendResult)};
+        }
+        return receiveFrames();
+    };
+
+    while (true) {
+        interruptState.arm();
+        resultCode = av_read_frame(formatContext.get(), packet.get());
+        interruptState.disarm();
+        if (resultCode < 0) {
+            break;
+        }
+
         if (stopToken.stop_requested()) {
-            return {.cancelled = true};
+            return {.info = std::move(streamInfo),
+                    .decodedFrameCount = decodedFrameCount,
+                    .cancelled = true};
         }
 
         if (packet->stream_index == audioStreamIndex) {
-            const auto sendResult = avcodec_send_packet(codecContext.get(), packet.get());
-            if (sendResult < 0 && sendResult != AVERROR(EAGAIN)) {
-                return {.error = "Could not submit audio data to the decoder: " + ffmpegError(sendResult)};
-            }
-            if (const auto error = receiveFrames()) {
-                return {.error = *error};
+            auto operation = submitPacket(packet.get());
+            if (!operation.succeeded()) {
+                return {.info = std::move(streamInfo),
+                        .decodedFrameCount = decodedFrameCount,
+                        .error = std::move(operation.error),
+                        .cancelled = operation.cancelled};
             }
         }
         av_packet_unref(packet.get());
     }
 
     if (resultCode != AVERROR_EOF) {
-        return {.error = "Could not finish reading the audio file: " + ffmpegError(resultCode)};
+        if (stopToken.stop_requested()) {
+            return {.info = std::move(streamInfo),
+                    .decodedFrameCount = decodedFrameCount,
+                    .cancelled = true};
+        }
+        if (interruptState.timedOut()) {
+            return {.info = std::move(streamInfo),
+                    .decodedFrameCount = decodedFrameCount,
+                    .error = "Reading the media source timed out."};
+        }
+        return {.info = std::move(streamInfo),
+                .decodedFrameCount = decodedFrameCount,
+                .error = "Could not finish reading the audio file: " + ffmpegError(resultCode)};
     }
 
-    resultCode = avcodec_send_packet(codecContext.get(), nullptr);
-    if (resultCode < 0 && resultCode != AVERROR_EOF) {
-        return {.error = "Could not flush the audio decoder: " + ffmpegError(resultCode)};
-    }
-    if (const auto error = receiveFrames()) {
-        return {.error = *error};
-    }
-
-    if (stopToken.stop_requested()) {
-        return {.cancelled = true};
+    auto operation = submitPacket(nullptr);
+    if (!operation.succeeded()) {
+        return {.info = std::move(streamInfo),
+                .decodedFrameCount = decodedFrameCount,
+                .error = std::move(operation.error),
+                .cancelled = operation.cancelled};
     }
 
-    if (decoded.interleavedSamples.empty()) {
-        return {.error = "The decoder produced no audio samples."};
+    while (swr_get_delay(resampler.get(), PcmFormat::sampleRate) > 0) {
+        const auto delayedSamples = swr_get_delay(resampler.get(), PcmFormat::sampleRate);
+        const auto outputCapacity = static_cast<int>(
+            std::min<std::int64_t>(delayedSamples, std::numeric_limits<int>::max()));
+        convertedSamples.resize(
+            static_cast<std::size_t>(outputCapacity) * PcmFormat::channels);
+        std::uint8_t* outputPlanes[] = {
+            reinterpret_cast<std::uint8_t*>(convertedSamples.data())};
+        const auto converted = swr_convert(
+            resampler.get(), outputPlanes, outputCapacity, nullptr, 0);
+        if (converted < 0) {
+            return {.info = std::move(streamInfo),
+                    .decodedFrameCount = decodedFrameCount,
+                    .error = "Could not flush resampled audio: " + ffmpegError(converted)};
+        }
+        if (converted == 0) {
+            break;
+        }
+
+        operation = writeSamples(std::span<const float>{convertedSamples}.first(
+            static_cast<std::size_t>(converted) * PcmFormat::channels));
+        if (!operation.succeeded()) {
+            return {.info = std::move(streamInfo),
+                    .decodedFrameCount = decodedFrameCount,
+                    .error = std::move(operation.error),
+                    .cancelled = operation.cancelled};
+        }
     }
 
-    const auto frameCount = decoded.interleavedSamples.size() / DecodedAudio::outputChannels;
-    decoded.durationMilliseconds = static_cast<std::int64_t>(
-        (frameCount * 1'000ULL) / DecodedAudio::outputSampleRate);
-    return {.audio = std::move(decoded)};
+    if (decodedFrameCount == 0) {
+        return {.info = std::move(streamInfo), .error = "The decoder produced no audio samples."};
+    }
+
+    streamInfo.durationMilliseconds = static_cast<std::int64_t>(
+        (decodedFrameCount * 1'000ULL) / PcmFormat::sampleRate) + startPosition;
+    if (destination.durationMilliseconds() <= 0) {
+        destination.setDurationMilliseconds(streamInfo.durationMilliseconds);
+    } else {
+        streamInfo.durationMilliseconds = destination.durationMilliseconds();
+    }
+    if (!readyWasPublished && readyCallback) {
+        readyCallback(streamInfo);
+    }
+    destination.markEndOfStream();
+    return {.info = std::move(streamInfo), .decodedFrameCount = decodedFrameCount};
 }
 
 } // namespace yaap
-

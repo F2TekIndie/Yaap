@@ -4,6 +4,8 @@ foreach(_required_variable IN ITEMS
     YAAP_DISTRIBUTION_DIR
     YAAP_WINDEPLOYQT
     YAAP_QML_DIR
+    YAAP_SAMPLE_MODS_DIR
+    YAAP_SAMPLE_PROVIDER_EXECUTABLE
     YAAP_DEPLOY_CONFIGURATION)
   if(NOT DEFINED ${_required_variable} OR "${${_required_variable}}" STREQUAL "")
     message(FATAL_ERROR "DeployWindows.cmake requires ${_required_variable}")
@@ -26,6 +28,14 @@ file(MAKE_DIRECTORY "${YAAP_DISTRIBUTION_DIR}")
 get_filename_component(_app_filename "${YAAP_APP_EXECUTABLE}" NAME)
 set(_deployed_app "${YAAP_DISTRIBUTION_DIR}/${_app_filename}")
 file(COPY_FILE "${YAAP_APP_EXECUTABLE}" "${_deployed_app}" ONLY_IF_DIFFERENT)
+
+file(COPY "${YAAP_SAMPLE_MODS_DIR}/" DESTINATION "${YAAP_DISTRIBUTION_DIR}/mods")
+file(MAKE_DIRECTORY
+  "${YAAP_DISTRIBUTION_DIR}/mods/org.yaap.sample-provider/bin/windows-x64")
+file(COPY_FILE
+  "${YAAP_SAMPLE_PROVIDER_EXECUTABLE}"
+  "${YAAP_DISTRIBUTION_DIR}/mods/org.yaap.sample-provider/bin/windows-x64/YaapSampleProvider.exe"
+  ONLY_IF_DIFFERENT)
 
 # vcpkg's app-local deployment places FFmpeg and its transitive runtime DLLs
 # beside the freshly linked executable before this post-build command runs.

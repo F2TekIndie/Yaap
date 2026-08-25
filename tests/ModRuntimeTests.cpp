@@ -1,0 +1,97 @@
+#include "mods/ExtensionRegistry.hpp"
+#include "mods/ModManifestParser.hpp"
+#include "mods/PermissionStore.hpp"
+#include "mods/ThemeManager.hpp"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QTemporaryDir>
+
+namespace yaap {
+namespace {
+
+void writeFile(const QString& path, const QByteArray& contents)
+{
+    QDir{}.mkpath(QFileInfo{path}.absolutePath());
+    QFile file{path};
+    REQUIRE(file.open(QIODevice::WriteOnly));
+    REQUIRE(file.write(contents) == contents.size());
+}
+
+} // namespace
+
+TEST_CASE("Manifest parser validates API permissions and package-contained paths")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("qml/Badge.qml"), "import QtQuick\nItem {}\n");
+    writeFile(directory.filePath("manifest.json"), R"json({
+        "schemaVersion":1,
+        "id":"org.example.sample-ui",
+        "name":"Sample",
+        "version":"1.0.0",
+        "api":{"minimum":"1.0","maximumExclusive":"2.0"},
+        "kind":["ui-extension"],
+        "permissions":["ui.extend:nowPlaying.aboveTransport"],
+        "uiExtensions":[{"slot":"nowPlaying.aboveTransport","component":"qml/Badge.qml"}]
+    })json");
+
+    const auto result = ModManifestParser::parsePackage(directory.path());
+    INFO(result.error.toStdString());
+    REQUIRE(result.succeeded());
+    CHECK(result.manifest.id == "org.example.sample-ui");
+    CHECK(result.manifest.uiExtensions.size() == 1);
+}
+
+TEST_CASE("Manifest parser rejects component paths outside the package")
+{
+    QTemporaryDir parent;
+    QDir{}.mkpath(parent.filePath("package"));
+    writeFile(parent.filePath("outside.qml"), "import QtQuick\nItem {}\n");
+    writeFile(parent.filePath("package/manifest.json"), R"json({
+        "schemaVersion":1,
+        "id":"org.example.escape-ui",
+        "name":"Escape",
+        "version":"1.0.0",
+        "api":{"minimum":"1.0","maximumExclusive":"2.0"},
+        "kind":["ui-extension"],
+        "permissions":["ui.extend:settings.pages"],
+        "uiExtensions":[{"slot":"settings.pages","component":"../outside.qml"}]
+    })json");
+    CHECK_FALSE(ModManifestParser::parsePackage(parent.filePath("package")).succeeded());
+}
+
+TEST_CASE("Theme activation is atomic and extension activation requires permission")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9}
+    })json");
+    ModManifest theme{.id = "org.example.theme", .name = "Theme", .version = "1.0",
+        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .theme = {.dataPath = directory.filePath("theme.json")}};
+    ThemeManager themes;
+    QString error;
+    REQUIRE(themes.registerTheme(theme, error));
+    REQUIRE(themes.selectTheme(theme.id, error));
+    CHECK(themes.accent() == QColor{"#00ffff"});
+
+    PermissionStore permissions;
+    ExtensionRegistry extensions{permissions};
+    ModManifest ui{.id = "org.example.ui", .name = "UI", .version = "1.0",
+        .kinds = {ModKind::UiExtension},
+        .permissions = {"ui.extend:nowPlaying.aboveTransport"},
+        .uiExtensions = {{"nowPlaying.aboveTransport", directory.filePath("Badge.qml"), 0}}};
+    extensions.rebuild({ui});
+    CHECK(extensions.rowCount() == 0);
+    REQUIRE(permissions.grantDeclared(ui, error));
+    extensions.rebuild({ui});
+    CHECK(extensions.rowCount() == 1);
+}
+
+} // namespace yaap

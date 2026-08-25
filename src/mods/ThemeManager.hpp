@@ -1,0 +1,66 @@
+#pragma once
+
+#include "extension_api/ModManifest.hpp"
+
+#include <QColor>
+#include <QHash>
+#include <QObject>
+#include <QString>
+
+namespace yaap {
+
+class ThemeManager final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QString currentThemeId READ currentThemeId NOTIFY themeChanged)
+    Q_PROPERTY(QColor windowTop READ windowTop NOTIFY themeChanged)
+    Q_PROPERTY(QColor windowBottom READ windowBottom NOTIFY themeChanged)
+    Q_PROPERTY(QColor surface READ surface NOTIFY themeChanged)
+    Q_PROPERTY(QColor primaryText READ primaryText NOTIFY themeChanged)
+    Q_PROPERTY(QColor secondaryText READ secondaryText NOTIFY themeChanged)
+    Q_PROPERTY(QColor accent READ accent NOTIFY themeChanged)
+    Q_PROPERTY(QColor error READ error NOTIFY themeChanged)
+    Q_PROPERTY(int cornerRadius READ cornerRadius NOTIFY themeChanged)
+    Q_PROPERTY(int spacing READ spacing NOTIFY themeChanged)
+
+public:
+    explicit ThemeManager(QObject* parent = nullptr);
+
+    void resetAvailableThemes();
+    bool registerTheme(const ModManifest& manifest, QString& error);
+    bool selectTheme(const QString& modId, QString& error);
+
+    [[nodiscard]] QString currentThemeId() const;
+    [[nodiscard]] QColor windowTop() const;
+    [[nodiscard]] QColor windowBottom() const;
+    [[nodiscard]] QColor surface() const;
+    [[nodiscard]] QColor primaryText() const;
+    [[nodiscard]] QColor secondaryText() const;
+    [[nodiscard]] QColor accent() const;
+    [[nodiscard]] QColor error() const;
+    [[nodiscard]] int cornerRadius() const noexcept;
+    [[nodiscard]] int spacing() const noexcept;
+
+signals:
+    void themeChanged();
+
+private:
+    struct ThemeData final {
+        QColor windowTop{"#202838"};
+        QColor windowBottom{"#101216"};
+        QColor surface{"#171b22"};
+        QColor primaryText{"#f4f6fa"};
+        QColor secondaryText{"#aeb8ca"};
+        QColor accent{"#80cbc4"};
+        QColor error{"#ff8a80"};
+        int cornerRadius{8};
+        int spacing{12};
+    };
+
+    static bool readThemeFile(const QString& path, ThemeData& data, QString& error);
+
+    QHash<QString, ThemeData> m_themes;
+    QString m_currentThemeId{"builtin.default"};
+    ThemeData m_current;
+};
+
+} // namespace yaap

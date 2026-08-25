@@ -1,10 +1,7 @@
-1. Replace whole-file decoding with a bounded SPSC PCM ring buffer and continuous FFmpeg producer.
-2. Add seeking, buffering state, interruptible I/O, timeouts, and asynchronous shutdown.
-3. Introduce queue, track, provider, and playback-session domain models.
-4. Add SQLite library indexing, metadata, artwork, folder watching, and playlists.
-5. Add internet radio, M3U/PLS/XSPF parsing, ICY metadata, reconnect, and backoff.
-6. Implement OpenSubsonic and Jellyfin providers with secure credential storage.
-7. Build versioned themes, QML extension points, plugin manifests, permissions, and an out-of-process provider SDK.
-8. Add ReplayGain, gapless playback, crossfade, EQ, visualizers, output selection, and OS media controls.
-9. Establish Linux/macOS CI, sanitizers, parser fuzzing, accessibility, localization, and performance budgets.
-10. Add deployment, installers, signing, SBOM, third-party notices, updates, and clean-machine release testing.
+Provider-domain gateway, account settings, credential handles, and cancellation-safe UI integration.
+Package digest/signing identity and provider process containment before remote distribution.
+Station/server browsers, federated search, pagination, bounded caches, and offline behavior.
+Provider conformance runner and live OpenSubsonic/Jellyfin compatibility matrix.
+ReplayGain, gapless playback, crossfade, EQ, output selection, visualizers, and OS media controls.
+Linux/macOS CI, sanitizers, parser fuzzing, accessibility, localization, and crash recovery.
+Installers, signing/notarization, SBOM, license notices, updates, and clean-machine release testing.

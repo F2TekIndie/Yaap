@@ -1,7 +1,10 @@
 #pragma once
 
 #include "audio/MiniaudioOutput.hpp"
+#include "core/AsyncTaskReaper.hpp"
 #include "core/PlaybackState.hpp"
+#include "radio/RadioPlaylist.hpp"
+#include "radio/RadioPlaylistLoader.hpp"
 
 #include <QObject>
 #include <QString>
@@ -9,8 +12,10 @@
 #include <QUrl>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <thread>
 
 namespace yaap {
@@ -26,6 +31,7 @@ class PlayerController final : public QObject {
     Q_PROPERTY(bool hasAudio READ hasAudio NOTIFY controlsChanged)
     Q_PROPERTY(bool isPlaying READ isPlaying NOTIFY controlsChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY controlsChanged)
+    Q_PROPERTY(bool isBuffering READ isBuffering NOTIFY controlsChanged)
 
 public:
     explicit PlayerController(QObject* parent = nullptr);
@@ -43,11 +49,15 @@ public:
     [[nodiscard]] bool hasAudio() const noexcept;
     [[nodiscard]] bool isPlaying() const noexcept;
     [[nodiscard]] bool isLoading() const noexcept;
+    [[nodiscard]] bool isBuffering() const noexcept;
 
     Q_INVOKABLE void openFile(const QUrl& url);
+    Q_INVOKABLE void openStream(const QUrl& url, const QString& title = {});
+    Q_INVOKABLE void openRadioPlaylist(const QUrl& url);
     Q_INVOKABLE void play();
     Q_INVOKABLE void pause();
     Q_INVOKABLE void stop();
+    Q_INVOKABLE void seek(qint64 positionMilliseconds);
 
 signals:
     void titleChanged();
@@ -58,20 +68,44 @@ signals:
     void controlsChanged();
 
 private:
+    enum class StreamStartMode {
+        Ready,
+        Stopped,
+        Paused,
+        AutoPlay,
+    };
+
+    void startStream(
+        StreamStartMode mode,
+        bool resetPresentation,
+        qint64 startPositionMilliseconds = 0);
     void cancelDecode();
     void setState(PlaybackState state);
     void setError(QString message);
     void updatePosition();
+    void scheduleReconnect(QString reason);
 
     PlaybackStateMachine m_stateMachine;
     MiniaudioOutput m_output;
     QTimer m_positionTimer;
+    QTimer m_reconnectTimer;
+    RadioPlaylistLoader m_radioPlaylistLoader;
+    ReconnectPolicy m_reconnectPolicy;
+    AsyncTaskReaper m_taskReaper;
     std::jthread m_decodeThread;
+    std::shared_ptr<PcmStream> m_stream;
     std::atomic<std::uint64_t> m_generation{0};
+    std::filesystem::path m_sourcePath;
+    std::string m_sourceUrl;
+    bool m_sourceIsNetwork{};
+    QString m_sourceFallbackTitle;
     QString m_title{"No track selected"};
     QString m_errorMessage;
     qint64 m_positionMilliseconds{};
     qint64 m_durationMilliseconds{};
+    std::size_t m_lastUnderrunCount{};
+    std::size_t m_reconnectAttempt{};
+    bool m_reconnectScheduled{};
 };
 
 } // namespace yaap

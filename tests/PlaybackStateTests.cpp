@@ -10,6 +10,8 @@ TEST_CASE("Playback state follows the local-file happy path")
     REQUIRE(state.transitionTo(yaap::PlaybackState::Loading));
     REQUIRE(state.transitionTo(yaap::PlaybackState::Ready));
     REQUIRE(state.transitionTo(yaap::PlaybackState::Playing));
+    REQUIRE(state.transitionTo(yaap::PlaybackState::Buffering));
+    REQUIRE(state.transitionTo(yaap::PlaybackState::Playing));
     REQUIRE(state.transitionTo(yaap::PlaybackState::Paused));
     REQUIRE(state.transitionTo(yaap::PlaybackState::Playing));
     REQUIRE(state.transitionTo(yaap::PlaybackState::Finished));
@@ -36,3 +38,10 @@ TEST_CASE("Playback state can recover after an error")
     REQUIRE(state.transitionTo(yaap::PlaybackState::Ready));
 }
 
+TEST_CASE("A network source may start buffering while it opens")
+{
+    yaap::PlaybackStateMachine state;
+    REQUIRE(state.transitionTo(yaap::PlaybackState::Loading));
+    CHECK(state.transitionTo(yaap::PlaybackState::Buffering));
+    CHECK(state.transitionTo(yaap::PlaybackState::Playing));
+}

@@ -9,6 +9,7 @@ enum class PlaybackState {
     Loading,
     Ready,
     Playing,
+    Buffering,
     Paused,
     Stopped,
     Finished,
@@ -28,6 +29,8 @@ enum class PlaybackState {
         return "Ready";
     case Playing:
         return "Playing";
+    case Buffering:
+        return "Buffering";
     case Paused:
         return "Paused";
     case Stopped:
@@ -53,4 +56,3 @@ private:
 };
 
 } // namespace yaap
-

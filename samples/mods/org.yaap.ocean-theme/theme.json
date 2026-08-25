@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "palette": {
+    "windowTop": "#16324a",
+    "windowBottom": "#07141f",
+    "surface": "#102838",
+    "primaryText": "#f3fbff",
+    "secondaryText": "#a9c6d8",
+    "accent": "#4dd0e1",
+    "error": "#ff8a80"
+  },
+  "metrics": {
+    "cornerRadius": 10,
+    "spacing": 14
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "org.yaap.sample-ui",
+  "name": "Yaap Sample UI Extension",
+  "version": "1.0.0",
+  "api": {
+    "minimum": "1.0",
+    "maximumExclusive": "2.0"
+  },
+  "kind": ["ui-extension"],
+  "permissions": ["ui.extend:nowPlaying.aboveTransport"],
+  "uiExtensions": [
+    {
+      "slot": "nowPlaying.aboveTransport",
+      "component": "qml/SampleBadge.qml",
+      "order": 100
+    }
+  ]
+}

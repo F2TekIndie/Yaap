@@ -1,7 +1,6 @@
 #include "audio/MiniaudioOutput.hpp"
 
-#include "audio/AudioBuffer.hpp"
-
+#include <algorithm>
 #include <span>
 #include <utility>
 
@@ -20,7 +19,7 @@ namespace yaap {
 
 struct MiniaudioOutput::Impl final {
     ma_device device{};
-    AudioBuffer buffer;
+    std::shared_ptr<PcmStream> stream;
     bool initialized{};
 
     static void dataCallback(
@@ -31,9 +30,14 @@ struct MiniaudioOutput::Impl final {
     {
         auto* self = static_cast<Impl*>(device->pUserData);
         auto* samples = static_cast<float*>(output);
-        const auto sampleCount = static_cast<std::size_t>(frameCount) * AudioBuffer::channels;
-        [[maybe_unused]] const auto rendered = self->buffer.render(
-            std::span<float>{samples, sampleCount}, static_cast<std::size_t>(frameCount));
+        const auto sampleCount = static_cast<std::size_t>(frameCount) * PcmFormat::channels;
+        const std::span outputSamples{samples, sampleCount};
+        if (self->stream) {
+            [[maybe_unused]] const auto rendered = self->stream->render(
+                outputSamples, static_cast<std::size_t>(frameCount));
+        } else {
+            std::fill(outputSamples.begin(), outputSamples.end(), 0.0F);
+        }
     }
 
     [[nodiscard]] bool initialize(std::string& error)
@@ -44,8 +48,8 @@ struct MiniaudioOutput::Impl final {
 
         auto config = ma_device_config_init(ma_device_type_playback);
         config.playback.format = ma_format_f32;
-        config.playback.channels = static_cast<ma_uint32>(AudioBuffer::channels);
-        config.sampleRate = AudioBuffer::sampleRate;
+        config.playback.channels = static_cast<ma_uint32>(PcmFormat::channels);
+        config.sampleRate = PcmFormat::sampleRate;
         config.dataCallback = &dataCallback;
         config.pUserData = this;
 
@@ -83,16 +87,28 @@ MiniaudioOutput::MiniaudioOutput()
 
 MiniaudioOutput::~MiniaudioOutput() = default;
 
-bool MiniaudioOutput::load(DecodedAudio audio, std::string& error)
+bool MiniaudioOutput::attach(std::shared_ptr<PcmStream> stream, std::string& error)
 {
+    if (!stream) {
+        error = "Cannot attach an empty PCM stream.";
+        return false;
+    }
+
     m_impl->stopDevice();
-    m_impl->buffer.setSamples(std::move(audio.interleavedSamples));
-    return m_impl->initialize(error);
+    if (m_impl->stream) {
+        m_impl->stream->pause();
+    }
+    m_impl->stream = std::move(stream);
+    if (!m_impl->initialize(error)) {
+        m_impl->stream.reset();
+        return false;
+    }
+    return true;
 }
 
 bool MiniaudioOutput::play(std::string& error)
 {
-    if (!m_impl->buffer.hasAudio()) {
+    if (!m_impl->stream || !m_impl->stream->hasAudio()) {
         error = "No audio is loaded.";
         return false;
     }
@@ -100,10 +116,10 @@ bool MiniaudioOutput::play(std::string& error)
         return false;
     }
 
-    m_impl->buffer.play();
+    m_impl->stream->play();
     const auto result = ma_device_start(&m_impl->device);
     if (result != MA_SUCCESS) {
-        m_impl->buffer.pause();
+        m_impl->stream->pause();
         error = "Could not start the audio output device: ";
         error += ma_result_description(result);
         return false;
@@ -114,39 +130,58 @@ bool MiniaudioOutput::play(std::string& error)
 void MiniaudioOutput::pause() noexcept
 {
     m_impl->stopDevice();
-    m_impl->buffer.pause();
+    if (m_impl->stream) {
+        m_impl->stream->pause();
+    }
 }
 
-void MiniaudioOutput::stop() noexcept
+void MiniaudioOutput::clear() noexcept
 {
     m_impl->stopDevice();
-    m_impl->buffer.stop();
+    if (m_impl->stream) {
+        m_impl->stream->pause();
+        m_impl->stream.reset();
+    }
 }
 
 bool MiniaudioOutput::hasAudio() const noexcept
 {
-    return m_impl->buffer.hasAudio();
+    return m_impl->stream && m_impl->stream->hasAudio();
 }
 
 bool MiniaudioOutput::isPlaying() const noexcept
 {
-    return m_impl->buffer.isPlaying();
+    return m_impl->stream && m_impl->stream->isPlaying();
+}
+
+bool MiniaudioOutput::isEndOfStream() const noexcept
+{
+    return m_impl->stream && m_impl->stream->isEndOfStream();
 }
 
 bool MiniaudioOutput::isFinished() const noexcept
 {
-    return m_impl->buffer.isFinished();
+    return m_impl->stream && m_impl->stream->isFinished();
+}
+
+std::size_t MiniaudioOutput::underrunCount() const noexcept
+{
+    return m_impl->stream ? m_impl->stream->underrunCount() : 0;
+}
+
+std::int64_t MiniaudioOutput::bufferedMilliseconds() const noexcept
+{
+    return m_impl->stream ? m_impl->stream->bufferedMilliseconds() : 0;
 }
 
 std::int64_t MiniaudioOutput::positionMilliseconds() const noexcept
 {
-    return m_impl->buffer.positionMilliseconds();
+    return m_impl->stream ? m_impl->stream->positionMilliseconds() : 0;
 }
 
 std::int64_t MiniaudioOutput::durationMilliseconds() const noexcept
 {
-    return m_impl->buffer.durationMilliseconds();
+    return m_impl->stream ? m_impl->stream->durationMilliseconds() : 0;
 }
 
 } // namespace yaap
-

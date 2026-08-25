@@ -1,14 +1,19 @@
 #include "audio/FFmpegDecoder.hpp"
+#include "audio/PcmFormat.hpp"
+#include "audio/PcmStream.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <stop_token>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -78,26 +83,68 @@ void writeSilentWave(const std::filesystem::path& path)
 
 } // namespace
 
-TEST_CASE("FFmpeg decodes and normalizes a WAV file")
+TEST_CASE("FFmpeg continuously decodes a WAV file through a bounded PCM stream")
 {
     TemporaryFile input{".wav"};
     writeSilentWave(input.path());
 
+    yaap::PcmStream stream{64};
+    std::atomic<bool> readyWasPublished{false};
+    std::atomic<std::int64_t> publishedDuration{0};
+    std::stop_source cancellation;
     const yaap::FFmpegDecoder decoder;
-    const auto result = decoder.decode(input.path());
+    auto decodeFuture = std::async(std::launch::async, [&] {
+        return decoder.streamFile(
+            input.path(),
+            stream,
+            [&](const yaap::AudioStreamInfo& info) {
+                publishedDuration.store(info.durationMilliseconds, std::memory_order_release);
+                readyWasPublished.store(true, std::memory_order_release);
+            },
+            {},
+            cancellation.get_token());
+    });
+
+    std::array<float, 34> output{};
+    std::size_t renderedFrames = 0;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (stream.hasAudio()) {
+            stream.play();
+        }
+        renderedFrames += stream.render(output, output.size() / yaap::PcmFormat::channels);
+
+        const auto producerFinished =
+            decodeFuture.wait_for(std::chrono::milliseconds{0}) == std::future_status::ready;
+        if (producerFinished && stream.bufferedFrames() == 0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+
+    if (decodeFuture.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) {
+        cancellation.request_stop();
+    }
+    const auto result = decodeFuture.get();
 
     INFO(result.error);
     REQUIRE(result.succeeded());
-    REQUIRE(result.audio->durationMilliseconds >= 90);
-    REQUIRE(result.audio->durationMilliseconds <= 110);
-    REQUIRE_FALSE(result.audio->interleavedSamples.empty());
-    REQUIRE(result.audio->interleavedSamples.size() % yaap::DecodedAudio::outputChannels == 0);
+    REQUIRE(readyWasPublished.load(std::memory_order_acquire));
+    REQUIRE(publishedDuration.load(std::memory_order_acquire) >= 90);
+    REQUIRE(publishedDuration.load(std::memory_order_acquire) <= 110);
+    REQUIRE(result.info.durationMilliseconds >= 90);
+    REQUIRE(result.info.durationMilliseconds <= 110);
+    REQUIRE(result.decodedFrameCount == renderedFrames);
+    REQUIRE(result.decodedFrameCount > stream.capacityFrames());
+    REQUIRE(stream.isEndOfStream());
+    REQUIRE(stream.isFinished());
 }
 
-TEST_CASE("FFmpeg reports missing and malformed input")
+TEST_CASE("FFmpeg reports missing and malformed streaming input")
 {
     const yaap::FFmpegDecoder decoder;
-    const auto missing = decoder.decode("this-file-does-not-exist.wav");
+    yaap::PcmStream missingStream;
+    const auto missing = decoder.streamFile("this-file-does-not-exist.wav", missingStream);
     REQUIRE_FALSE(missing.succeeded());
     REQUIRE_FALSE(missing.error.empty());
 
@@ -106,20 +153,41 @@ TEST_CASE("FFmpeg reports missing and malformed input")
         std::ofstream output(malformed.path(), std::ios::binary);
         output << "not a media file";
     }
-    const auto invalid = decoder.decode(malformed.path());
+    yaap::PcmStream malformedStream;
+    const auto invalid = decoder.streamFile(malformed.path(), malformedStream);
     REQUIRE_FALSE(invalid.succeeded());
     REQUIRE_FALSE(invalid.error.empty());
 }
 
-TEST_CASE("FFmpeg decode honours cancellation before opening input")
+TEST_CASE("FFmpeg streaming honours cancellation before opening input")
 {
     std::stop_source cancellation;
     cancellation.request_stop();
 
     const yaap::FFmpegDecoder decoder;
-    const auto result = decoder.decode("unused.wav", cancellation.get_token());
+    yaap::PcmStream stream;
+    const auto result = decoder.streamFile(
+        "unused.wav", stream, {}, {}, cancellation.get_token());
 
     REQUIRE(result.cancelled);
     REQUIRE_FALSE(result.succeeded());
 }
 
+TEST_CASE("FFmpeg streaming seeks before producing PCM")
+{
+    TemporaryFile input{".wav"};
+    writeSilentWave(input.path());
+
+    yaap::PcmStream stream;
+    yaap::StreamOptions options;
+    options.startPositionMilliseconds = 50;
+    const yaap::FFmpegDecoder decoder;
+    const auto result = decoder.streamFile(input.path(), stream, {}, options);
+
+    INFO(result.error);
+    REQUIRE(result.succeeded());
+    REQUIRE(stream.positionMilliseconds() == 50);
+    REQUIRE(stream.durationMilliseconds() >= 90);
+    REQUIRE(stream.durationMilliseconds() <= 110);
+    REQUIRE(result.decodedFrameCount < yaap::PcmFormat::sampleRate / 10U);
+}
