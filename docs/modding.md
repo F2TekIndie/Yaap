@@ -52,8 +52,8 @@ package through `..` or a symbolic link.
 Theme mods point to a JSON document through `theme.data`. Schema 1 requires the
 seven palette values used by `Theme` and bounded `cornerRadius` and `spacing`
 metrics. The optional data-only `background.effect` token accepts `none`,
-`waves`, or `spectrum`; the trusted host renders the effect, so a theme cannot
-execute code.
+`waves`, `spectrum`, or `paperPlanes`; the trusted host renders the effect, so a
+theme cannot execute code.
 Theme changes are validated completely before being applied. A theme may add one
 optional package-local PNG or SVG `background.image` underneath its single
 host-owned effect. The image object accepts an `asset`, `fit`
@@ -61,7 +61,20 @@ host-owned effect. The image object accepts an `asset`, `fit`
 `alignment`, and opacity from 0 to 1. Image paths cannot escape the package;
 files and decoded PNG dimensions are bounded. Setting `windowShape` to `true`
 also uses the image alpha as the native window's visible and input-region hint;
-themes should keep all essential controls inside the opaque silhouette. API 1.1
+themes should keep all essential controls inside the opaque silhouette.
+
+The optional `layout` object lets a shaped theme declare the rectangular safe
+area used by every normal player control and place the close button independently.
+`controlArea` accepts bounded `leftInset`, `topInset`, `rightInset`, and
+`bottomInset` values. `closeButton` accepts bounded `rightInset`, `topInset`,
+`width`, and `height` values. Missing values use the host defaults. Themes cannot
+name, replace, or execute individual controls; they only position the trusted
+host-owned interface. Application dialogs use separate frameless, resizable
+windows so the main skin's native mask does not clip them. Each dialog has a
+host-defined initial size and persists its resized width and height through the
+application settings.
+
+API 1.1
 adds the host-owned
 `spectrum` background effect. A theme may configure 8–48 columns,
 mirroring, opacity, and bounded attack/release durations through the optional
@@ -83,6 +96,20 @@ still execute no code.
   "parameters": {
     "columns": 48,
     "mirror": true
+  }
+},
+"layout": {
+  "controlArea": {
+    "leftInset": 64,
+    "topInset": 84,
+    "rightInset": 216,
+    "bottomInset": 84
+  },
+  "closeButton": {
+    "rightInset": 170,
+    "topInset": 48,
+    "width": 44,
+    "height": 36
   }
 }
 ```

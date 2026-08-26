@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QImageReader>
 #include <QTemporaryDir>
 
 namespace yaap {
@@ -21,6 +22,22 @@ void writeFile(const QString& path, const QByteArray& contents)
     QFile file{path};
     REQUIRE(file.open(QIODevice::WriteOnly));
     REQUIRE(file.write(contents) == contents.size());
+}
+
+QPoint firstTransparentPixel(const QImage& image, const QRect& rectangle)
+{
+    constexpr int alphaThreshold = 8;
+    if (rectangle.isEmpty() || !image.rect().contains(rectangle)) {
+        return rectangle.topLeft();
+    }
+    for (int y = rectangle.top(); y <= rectangle.bottom(); ++y) {
+        for (int x = rectangle.left(); x <= rectangle.right(); ++x) {
+            if (qAlpha(image.pixel(x, y)) < alphaThreshold) {
+                return {x, y};
+            }
+        }
+    }
+    return {-1, -1};
 }
 
 } // namespace
@@ -122,14 +139,38 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
         CHECK(themes.currentThemeId() == parsed.manifest.id);
         const auto expectedEffect = package == "org.yaap.ocean-theme"
             ? QString{"waves"}
-            : package == "org.yaap.synthwave-theme" ? QString{"spectrum"} : QString{"none"};
+            : package == "org.yaap.synthwave-theme"
+                ? QString{"spectrum"}
+                : package == "org.yaap.paper-theme" ? QString{"paperPlanes"}
+                                                      : QString{"none"};
         CHECK(themes.backgroundEffect() == expectedEffect);
+        if (package == "org.yaap.paper-theme") {
+            CHECK(themes.backgroundImageSource().fileName() == "paper-plane-skin.svg");
+            CHECK(themes.backgroundImageFit() == "stretch");
+            CHECK(themes.backgroundImageAlignment() == "center");
+            CHECK(themes.backgroundImageOpacity() == 0.9);
+            CHECK(themes.backgroundImageShapesWindow());
+            CHECK(themes.controlAreaLeftInset() == 64);
+            CHECK(themes.controlAreaTopInset() == 84);
+            CHECK(themes.controlAreaRightInset() == 216);
+            CHECK(themes.controlAreaBottomInset() == 84);
+            CHECK(themes.closeButtonRightInset() == 170);
+            CHECK(themes.closeButtonTopInset() == 48);
+            CHECK(themes.closeButtonWidth() == 44);
+            CHECK(themes.closeButtonHeight() == 36);
+        }
         if (package == "org.yaap.synthwave-theme") {
             CHECK(themes.backgroundImageSource().fileName() == "neon-horizon.svg");
             CHECK(themes.backgroundImageFit() == "stretch");
             CHECK(themes.backgroundImageAlignment() == "center");
             CHECK(themes.backgroundImageOpacity() == 0.68);
             CHECK(themes.backgroundImageShapesWindow());
+            CHECK(themes.controlAreaLeftInset() == 90);
+            CHECK(themes.controlAreaTopInset() == 50);
+            CHECK(themes.controlAreaRightInset() == 90);
+            CHECK(themes.controlAreaBottomInset() == 50);
+            CHECK(themes.closeButtonRightInset() == 42);
+            CHECK(themes.closeButtonTopInset() == 30);
             CHECK(themes.spectrumColumns() == 48);
             CHECK(themes.spectrumMirror());
             CHECK(themes.spectrumOpacity() == 0.32);
@@ -151,6 +192,73 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
             REQUIRE(restoredThemes.selectTheme(parsed.manifest.id, error));
             CHECK(restoredThemes.spectrumHueShiftDegrees() == 180.0);
             restoredThemes.setSpectrumHueShiftDegrees(0.0);
+        }
+    }
+}
+
+TEST_CASE("Theme control layout metadata is strictly bounded")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9},
+      "layout":{
+        "controlArea":{"leftInset":100,"rightInset":100},
+        "closeButton":{"rightInset":12,"topInset":4.5,"width":44,"height":36}
+      }
+    })json");
+    ModManifest theme{.id = "org.example.invalid-layout", .name = "Invalid layout",
+        .version = "1.0", .contentDigest = "invalid-layout-digest",
+        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .theme = {.dataPath = directory.filePath("theme.json")}};
+
+    ThemeManager themes;
+    QString error;
+    CHECK_FALSE(themes.registerTheme(theme, error));
+    CHECK((error.contains("layout") || error.contains("usable window space")));
+}
+
+TEST_CASE("Shaped sample themes keep controls inside their opaque window region")
+{
+    const QDir sampleMods{QString::fromUtf8(YAAP_SAMPLE_MODS_PATH)};
+    for (const auto& package : {QString{"org.yaap.paper-theme"},
+             QString{"org.yaap.synthwave-theme"}}) {
+        CAPTURE(package.toStdString());
+        const auto parsed = ModManifestParser::parsePackage(sampleMods.filePath(package));
+        REQUIRE(parsed.succeeded());
+
+        ThemeManager themes;
+        QString error;
+        REQUIRE(themes.registerTheme(parsed.manifest, error));
+        REQUIRE(themes.selectTheme(parsed.manifest.id, error));
+        REQUIRE(themes.backgroundImageShapesWindow());
+        REQUIRE(themes.backgroundImageFit() == "stretch");
+
+        for (const auto& size : {QSize{900, 560}, QSize{680, 420}}) {
+            CAPTURE(size.width(), size.height());
+            QImageReader reader{themes.backgroundImageSource().toLocalFile()};
+            reader.setScaledSize(size);
+            const auto image = reader.read().convertToFormat(QImage::Format_ARGB32);
+            REQUIRE_FALSE(image.isNull());
+
+            const QRect controlArea{themes.controlAreaLeftInset(),
+                themes.controlAreaTopInset(),
+                size.width() - themes.controlAreaLeftInset()
+                    - themes.controlAreaRightInset(),
+                size.height() - themes.controlAreaTopInset()
+                    - themes.controlAreaBottomInset()};
+            const QRect closeButton{size.width() - themes.closeButtonRightInset()
+                    - themes.closeButtonWidth(),
+                themes.closeButtonTopInset(), themes.closeButtonWidth(),
+                themes.closeButtonHeight()};
+            const auto transparentControlPixel = firstTransparentPixel(image, controlArea);
+            CAPTURE(transparentControlPixel.x(), transparentControlPixel.y());
+            CHECK((transparentControlPixel == QPoint{-1, -1}));
+            const auto transparentClosePixel = firstTransparentPixel(image, closeButton);
+            CAPTURE(transparentClosePixel.x(), transparentClosePixel.y());
+            CHECK((transparentClosePixel == QPoint{-1, -1}));
         }
     }
 }
@@ -270,6 +378,14 @@ TEST_CASE("Theme background image accepts bounded transparent PNG files")
     CHECK(themes.backgroundImageAlignment() == "center");
     CHECK(themes.backgroundImageOpacity() == 1.0);
     CHECK(themes.backgroundEffect() == "spectrum");
+    CHECK(themes.controlAreaLeftInset() == 36);
+    CHECK(themes.controlAreaTopInset() == 36);
+    CHECK(themes.controlAreaRightInset() == 36);
+    CHECK(themes.controlAreaBottomInset() == 36);
+    CHECK(themes.closeButtonRightInset() == 0);
+    CHECK(themes.closeButtonTopInset() == 0);
+    CHECK(themes.closeButtonWidth() == 44);
+    CHECK(themes.closeButtonHeight() == 36);
 }
 
 TEST_CASE("Spectrum theme parameters are strictly bounded")

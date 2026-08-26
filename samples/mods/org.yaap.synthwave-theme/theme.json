@@ -13,6 +13,20 @@
     "cornerRadius": 16,
     "spacing": 14
   },
+  "layout": {
+    "controlArea": {
+      "leftInset": 90,
+      "topInset": 50,
+      "rightInset": 90,
+      "bottomInset": 50
+    },
+    "closeButton": {
+      "rightInset": 42,
+      "topInset": 30,
+      "width": 44,
+      "height": 36
+    }
+  },
   "background": {
     "image": {
       "asset": "assets/neon-horizon.svg",

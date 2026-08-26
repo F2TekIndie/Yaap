@@ -76,6 +76,10 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void seek(qint64 positionMilliseconds);
 
+    // Stops real-time output and requests cancellation of background work.
+    // Safe to call repeatedly during application shutdown.
+    void shutdown();
+
 signals:
     void titleChanged();
     void nowPlayingChanged();
@@ -131,6 +135,7 @@ private:
     std::size_t m_reconnectAttempt{};
     bool m_reconnectScheduled{};
     bool m_nowPlayingMetadataStale{};
+    bool m_shuttingDown{};
 };
 
 } // namespace yaap

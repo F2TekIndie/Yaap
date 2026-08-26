@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fffdf7"/>
+      <stop offset="0.56" stop-color="#eee4d4"/>
+      <stop offset="1" stop-color="#c8bba7"/>
+    </linearGradient>
+    <linearGradient id="lowerFold" x1="0" y1="0" x2="0.9" y2="0.2">
+      <stop offset="0" stop-color="#d6c8b4"/>
+      <stop offset="1" stop-color="#f7efe1"/>
+    </linearGradient>
+    <filter id="grain" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="2" seed="11" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0" result="gray"/>
+      <feComponentTransfer in="gray" result="faint">
+        <feFuncA type="table" tableValues="0 0.055"/>
+      </feComponentTransfer>
+      <feComposite in="faint" in2="SourceAlpha" operator="in" result="clippedNoise"/>
+      <feBlend in="SourceGraphic" in2="clippedNoise" mode="multiply"/>
+    </filter>
+  </defs>
+
+  <!-- A broad, right-facing paper-airplane silhouette keeps the existing player
+       controls usable while retaining a pointed nose, swept wings, and tail notch. -->
+  <path d="M18 18 H716 L894 280 L716 542 H18 L52 320 L18 280 L52 240 Z"
+        fill="url(#paper)" stroke="#a63d2f" stroke-width="5" stroke-linejoin="round"
+        filter="url(#grain)"/>
+
+  <!-- All major folds now converge on the nose. This reads as an airplane rather
+       than an envelope while the broad wings still form the application's skin. -->
+  <path d="M18 18 L894 280 L176 230 L66 280 Z"
+        fill="#fffdf8" fill-opacity="0.52"/>
+  <path d="M66 280 L176 330 L894 280 L716 542 L18 542 Z"
+        fill="url(#lowerFold)" fill-opacity="0.62"/>
+  <path d="M66 280 L894 280 L176 230 Z"
+        fill="#f8efe1" fill-opacity="0.72"/>
+  <path d="M66 280 L176 330 L894 280 Z"
+        fill="#cfc0aa" fill-opacity="0.56"/>
+  <path d="M176 230 L404 280 L176 330 L66 280 Z"
+        fill="#eee2d1" fill-opacity="0.66"/>
+  <g fill="none" stroke="#756957" stroke-opacity="0.42" stroke-width="2">
+    <path d="M18 18 L894 280"/>
+    <path d="M18 542 L894 280"/>
+    <path d="M66 280 H894"/>
+    <path d="M176 230 L404 280 L176 330"/>
+  </g>
+  <g fill="none" stroke="#a63d2f" stroke-opacity="0.12" stroke-width="1">
+    <path d="M190 86 C350 68 528 92 682 62"/>
+    <path d="M180 480 C356 500 526 470 684 504"/>
+    <path d="M220 150 C376 138 522 164 662 132"/>
+  </g>
+</svg>

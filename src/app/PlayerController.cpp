@@ -68,8 +68,18 @@ PlayerController::PlayerController(AudioAnalysisEngine* analysisEngine, QObject*
 
 PlayerController::~PlayerController()
 {
+    shutdown();
+}
+
+void PlayerController::shutdown()
+{
+    if (m_shuttingDown) {
+        return;
+    }
+    m_shuttingDown = true;
     m_positionTimer.stop();
     m_reconnectTimer.stop();
+    m_reconnectScheduled = false;
     m_output.clear();
     cancelDecode();
     m_stream.reset();

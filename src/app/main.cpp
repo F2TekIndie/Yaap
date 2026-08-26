@@ -141,5 +141,17 @@ int main(int argc, char* argv[])
     }
     yaap::WindowShapeController windowShape{themes, *window};
 
+    // The frameless dialogs are persistent top-level QML windows. Once one has
+    // been shown, relying on quitOnLastWindowClosed would leave the process
+    // alive after the main window closes.
+    QObject::connect(window, &QQuickWindow::closing, &application,
+        [&application, &player, window] {
+            window->setProperty("applicationClosing", true);
+            player.shutdown();
+            application.quit();
+        });
+    QObject::connect(&application, &QCoreApplication::aboutToQuit, &player,
+        &yaap::PlayerController::shutdown);
+
     return application.exec();
 }

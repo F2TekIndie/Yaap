@@ -5,7 +5,9 @@ qt_add_qml_module(
   VERSION 1.0
   QML_FILES
     AnimatedWaveBackground.qml
+    AnimatedPaperPlaneBackground.qml
     ExtensionHost.qml
+    FramelessDialog.qml
     SpectrumBackground.qml
     ThemedPanel.qml
 )

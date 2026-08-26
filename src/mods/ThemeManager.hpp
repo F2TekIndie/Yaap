@@ -22,6 +22,14 @@ class ThemeManager final : public QObject {
     Q_PROPERTY(QColor error READ error NOTIFY themeChanged)
     Q_PROPERTY(int cornerRadius READ cornerRadius NOTIFY themeChanged)
     Q_PROPERTY(int spacing READ spacing NOTIFY themeChanged)
+    Q_PROPERTY(int controlAreaLeftInset READ controlAreaLeftInset NOTIFY themeChanged)
+    Q_PROPERTY(int controlAreaTopInset READ controlAreaTopInset NOTIFY themeChanged)
+    Q_PROPERTY(int controlAreaRightInset READ controlAreaRightInset NOTIFY themeChanged)
+    Q_PROPERTY(int controlAreaBottomInset READ controlAreaBottomInset NOTIFY themeChanged)
+    Q_PROPERTY(int closeButtonRightInset READ closeButtonRightInset NOTIFY themeChanged)
+    Q_PROPERTY(int closeButtonTopInset READ closeButtonTopInset NOTIFY themeChanged)
+    Q_PROPERTY(int closeButtonWidth READ closeButtonWidth NOTIFY themeChanged)
+    Q_PROPERTY(int closeButtonHeight READ closeButtonHeight NOTIFY themeChanged)
     Q_PROPERTY(QUrl backgroundImageSource READ backgroundImageSource NOTIFY themeChanged)
     Q_PROPERTY(QString backgroundImageFit READ backgroundImageFit NOTIFY themeChanged)
     Q_PROPERTY(QString backgroundImageAlignment READ backgroundImageAlignment NOTIFY themeChanged)
@@ -56,6 +64,14 @@ public:
     [[nodiscard]] QColor error() const;
     [[nodiscard]] int cornerRadius() const noexcept;
     [[nodiscard]] int spacing() const noexcept;
+    [[nodiscard]] int controlAreaLeftInset() const noexcept;
+    [[nodiscard]] int controlAreaTopInset() const noexcept;
+    [[nodiscard]] int controlAreaRightInset() const noexcept;
+    [[nodiscard]] int controlAreaBottomInset() const noexcept;
+    [[nodiscard]] int closeButtonRightInset() const noexcept;
+    [[nodiscard]] int closeButtonTopInset() const noexcept;
+    [[nodiscard]] int closeButtonWidth() const noexcept;
+    [[nodiscard]] int closeButtonHeight() const noexcept;
     [[nodiscard]] QUrl backgroundImageSource() const;
     [[nodiscard]] QString backgroundImageFit() const;
     [[nodiscard]] QString backgroundImageAlignment() const;
@@ -88,6 +104,14 @@ private:
         QColor error{"#ff8a80"};
         int cornerRadius{8};
         int spacing{12};
+        int controlAreaLeftInset{36};
+        int controlAreaTopInset{36};
+        int controlAreaRightInset{36};
+        int controlAreaBottomInset{36};
+        int closeButtonRightInset{};
+        int closeButtonTopInset{};
+        int closeButtonWidth{44};
+        int closeButtonHeight{36};
         QUrl backgroundImageSource;
         QString backgroundImageFit{"preserveAspectFit"};
         QString backgroundImageAlignment{"center"};

@@ -9,6 +9,12 @@ import Yaap.Ui 1.0
 ApplicationWindow {
     id: root
 
+    // PROTOTYPE: FramelessDialog uses this counter for QML-side modality.
+    // Replace it with the planned shared window manager when dialog stacking
+    // and ownership are centralized.
+    property int framelessModalDepth: 0
+    property bool applicationClosing: false
+
     width: 900
     height: 560
     minimumWidth: 680
@@ -52,18 +58,21 @@ ApplicationWindow {
         onAccepted: MusicLibrary.addFolder(selectedFolder)
     }
 
-    Dialog {
+    FramelessDialog {
         id: streamDialog
+        settingsKey: "stream"
+        defaultWidth: 560
+        defaultHeight: 320
+        minimumWidth: 480
+        minimumHeight: 280
         title: "Open internet radio or provider stream"
         modal: true
-        anchors.centerIn: parent
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: playlistMode.checked
             ? Player.openRadioPlaylist(streamUrl.text)
             : Player.openStream(streamUrl.text, streamName.text)
 
-        ColumnLayout {
-            anchors.fill: parent
+        contentItem: ColumnLayout {
             Label { text: "HTTP(S) stream URL" }
             TextField {
                 id: streamUrl
@@ -79,8 +88,13 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    FramelessDialog {
         id: trustDialog
+        settingsKey: "trust-mod"
+        defaultWidth: 600
+        defaultHeight: 390
+        minimumWidth: 520
+        minimumHeight: 340
         property string pendingModId
         property var requestedPermissions: []
         property bool activateThemeAfterGrant: false
@@ -89,7 +103,6 @@ ApplicationWindow {
 
         title: "Trust third-party mod?"
         modal: true
-        anchors.centerIn: parent
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
             if (Mods.grantDeclared(pendingModId)) {
@@ -102,8 +115,7 @@ ApplicationWindow {
         }
         onRejected: activateThemeAfterGrant = false
 
-        ColumnLayout {
-            width: 500
+        contentItem: ColumnLayout {
             Label {
                 Layout.fillWidth: true
                 text: ModApi.trustWarning
@@ -126,14 +138,16 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    FramelessDialog {
         id: modsDialog
+        settingsKey: "mods"
+        defaultWidth: 760
+        defaultHeight: 520
+        minimumWidth: 640
+        minimumHeight: 420
         title: "Mods and themes — API " + ModApi.version
         modal: true
-        anchors.centerIn: parent
         standardButtons: Dialog.Close
-        width: 680
-        height: 460
 
         contentItem: ColumnLayout {
             spacing: Theme.spacing
@@ -270,14 +284,16 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    FramelessDialog {
         id: providersDialog
+        settingsKey: "providers"
+        defaultWidth: 780
+        defaultHeight: 560
+        minimumWidth: 640
+        minimumHeight: 420
         title: "Providers"
         modal: true
-        anchors.centerIn: parent
         standardButtons: Dialog.Close
-        width: 720
-        height: 500
 
         contentItem: ColumnLayout {
             spacing: Theme.spacing
@@ -374,14 +390,16 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    FramelessDialog {
         id: accountsDialog
+        settingsKey: "provider-accounts"
+        defaultWidth: 780
+        defaultHeight: 600
+        minimumWidth: 640
+        minimumHeight: 500
         title: "Provider accounts"
         modal: true
-        anchors.centerIn: parent
         standardButtons: Dialog.Close
-        width: 720
-        height: 560
 
         contentItem: ColumnLayout {
             spacing: Theme.spacing
@@ -481,14 +499,16 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    FramelessDialog {
         id: libraryDialog
+        settingsKey: "library"
+        defaultWidth: 780
+        defaultHeight: 560
+        minimumWidth: 640
+        minimumHeight: 420
         title: "Local library"
         modal: true
-        anchors.centerIn: parent
         standardButtons: Dialog.Close
-        width: 720
-        height: 500
         contentItem: ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
@@ -538,20 +558,22 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    FramelessDialog {
         id: radioDialog
+        settingsKey: "radio"
+        defaultWidth: 820
+        defaultHeight: 600
+        minimumWidth: 680
+        minimumHeight: 480
         title: "Internet radio"
         modal: true
-        anchors.centerIn: parent
         standardButtons: Dialog.Close
-        width: 780
-        height: 560
         onOpened: {
             radioTabs.currentIndex = Radio.count === 0 ? 1 : 0
             directorySearch.clear()
             RadioDirectory.refreshPopular()
         }
-        onClosed: RadioDirectory.cancel()
+        onRejected: RadioDirectory.cancel()
         contentItem: ColumnLayout {
             TabBar {
                 id: radioTabs
@@ -871,20 +893,30 @@ ApplicationWindow {
         }
     }
 
+    Loader {
+        anchors.fill: parent
+        active: Theme.backgroundEffect === "paperPlanes"
+        sourceComponent: Component {
+            AnimatedPaperPlaneBackground {
+                anchors.fill: parent
+            }
+        }
+    }
+
     Item {
         id: windowChrome
 
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: 36
+        height: Math.max(36, Theme.closeButtonTopInset + Theme.closeButtonHeight)
         z: 10
 
         MouseArea {
             anchors.left: parent.left
             anchors.right: closeButton.left
             anchors.top: parent.top
-            anchors.bottom: parent.bottom
+            height: 36
             acceptedButtons: Qt.LeftButton
             cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
             onPressed: root.startSystemMove()
@@ -894,9 +926,11 @@ ApplicationWindow {
             id: closeButton
 
             anchors.right: parent.right
+            anchors.rightMargin: Theme.closeButtonRightInset
             anchors.top: parent.top
-            width: 44
-            height: parent.height
+            anchors.topMargin: Theme.closeButtonTopInset
+            width: Theme.closeButtonWidth
+            height: Theme.closeButtonHeight
             text: "×"
             flat: true
             font.pixelSize: 20
@@ -915,7 +949,10 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 36
+        anchors.leftMargin: Theme.controlAreaLeftInset
+        anchors.rightMargin: Theme.controlAreaRightInset
+        anchors.topMargin: Theme.controlAreaTopInset
+        anchors.bottomMargin: Theme.controlAreaBottomInset
         spacing: Theme.spacing
 
         RowLayout {

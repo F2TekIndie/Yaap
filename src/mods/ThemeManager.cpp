@@ -11,6 +11,7 @@
 #include <QSettings>
 
 #include <cmath>
+#include <limits>
 
 namespace yaap {
 namespace {
@@ -21,6 +22,9 @@ constexpr qint64 maximumBackgroundRasterPixels = 32 * 1024 * 1024;
 constexpr int maximumBackgroundRasterDimension = 8'192;
 constexpr qreal minimumHueShiftDegrees = -180.0;
 constexpr qreal maximumHueShiftDegrees = 180.0;
+constexpr int maximumLayoutInset = 256;
+constexpr int maximumHorizontalLayoutInsetSum = 400;
+constexpr int maximumVerticalLayoutInsetSum = 280;
 
 bool readColor(const QJsonObject& palette, const char* key, QColor& output, QString& error)
 {
@@ -30,6 +34,28 @@ bool readColor(const QJsonObject& palette, const char* key, QColor& output, QStr
         return false;
     }
     output = candidate;
+    return true;
+}
+
+bool readLayoutInteger(const QJsonObject& object,
+    const char* key,
+    const int minimum,
+    const int maximum,
+    int& output,
+    QString& error)
+{
+    const auto value = object.value(QLatin1String{key});
+    if (value.isUndefined()) {
+        return true;
+    }
+    const auto number = value.toDouble(std::numeric_limits<double>::quiet_NaN());
+    if (!value.isDouble() || !std::isfinite(number) || number != std::floor(number)
+        || number < minimum || number > maximum) {
+        error = "Theme layout " + QString::fromLatin1(key)
+            + " must be a bounded whole number.";
+        return false;
+    }
+    output = static_cast<int>(number);
     return true;
 }
 
@@ -189,6 +215,38 @@ QColor ThemeManager::accent() const { return m_current.accent; }
 QColor ThemeManager::error() const { return m_current.error; }
 int ThemeManager::cornerRadius() const noexcept { return m_current.cornerRadius; }
 int ThemeManager::spacing() const noexcept { return m_current.spacing; }
+int ThemeManager::controlAreaLeftInset() const noexcept
+{
+    return m_current.controlAreaLeftInset;
+}
+int ThemeManager::controlAreaTopInset() const noexcept
+{
+    return m_current.controlAreaTopInset;
+}
+int ThemeManager::controlAreaRightInset() const noexcept
+{
+    return m_current.controlAreaRightInset;
+}
+int ThemeManager::controlAreaBottomInset() const noexcept
+{
+    return m_current.controlAreaBottomInset;
+}
+int ThemeManager::closeButtonRightInset() const noexcept
+{
+    return m_current.closeButtonRightInset;
+}
+int ThemeManager::closeButtonTopInset() const noexcept
+{
+    return m_current.closeButtonTopInset;
+}
+int ThemeManager::closeButtonWidth() const noexcept
+{
+    return m_current.closeButtonWidth;
+}
+int ThemeManager::closeButtonHeight() const noexcept
+{
+    return m_current.closeButtonHeight;
+}
 QUrl ThemeManager::backgroundImageSource() const { return m_current.backgroundImageSource; }
 QString ThemeManager::backgroundImageFit() const { return m_current.backgroundImageFit; }
 QString ThemeManager::backgroundImageAlignment() const
@@ -294,6 +352,59 @@ bool ThemeManager::readThemeFile(const QString& path,
     data.spectrumGradientMiddle = data.secondaryText;
     data.spectrumGradientEnd = data.accent;
 
+    const auto layoutValue = root.value("layout");
+    if (!layoutValue.isUndefined()) {
+        if (!layoutValue.isObject()) {
+            error = "Theme layout declaration must be an object.";
+            return false;
+        }
+        const auto layout = layoutValue.toObject();
+        const auto controlAreaValue = layout.value("controlArea");
+        if (!controlAreaValue.isUndefined()) {
+            if (!controlAreaValue.isObject()) {
+                error = "Theme control area declaration must be an object.";
+                return false;
+            }
+            const auto controlArea = controlAreaValue.toObject();
+            if (!readLayoutInteger(controlArea, "leftInset", 0,
+                    maximumLayoutInset, data.controlAreaLeftInset, error)
+                || !readLayoutInteger(controlArea, "topInset", 0,
+                    maximumLayoutInset, data.controlAreaTopInset, error)
+                || !readLayoutInteger(controlArea, "rightInset", 0,
+                    maximumLayoutInset, data.controlAreaRightInset, error)
+                || !readLayoutInteger(controlArea, "bottomInset", 0,
+                    maximumLayoutInset, data.controlAreaBottomInset, error)) {
+                return false;
+            }
+            if (data.controlAreaLeftInset + data.controlAreaRightInset
+                    > maximumHorizontalLayoutInsetSum
+                || data.controlAreaTopInset + data.controlAreaBottomInset
+                    > maximumVerticalLayoutInsetSum) {
+                error = "Theme control area leaves too little usable window space.";
+                return false;
+            }
+        }
+
+        const auto closeButtonValue = layout.value("closeButton");
+        if (!closeButtonValue.isUndefined()) {
+            if (!closeButtonValue.isObject()) {
+                error = "Theme close-button declaration must be an object.";
+                return false;
+            }
+            const auto closeButton = closeButtonValue.toObject();
+            if (!readLayoutInteger(closeButton, "rightInset", 0,
+                    maximumLayoutInset, data.closeButtonRightInset, error)
+                || !readLayoutInteger(closeButton, "topInset", 0,
+                    maximumLayoutInset, data.closeButtonTopInset, error)
+                || !readLayoutInteger(closeButton, "width", 28, 96,
+                    data.closeButtonWidth, error)
+                || !readLayoutInteger(closeButton, "height", 24, 72,
+                    data.closeButtonHeight, error)) {
+                return false;
+            }
+        }
+    }
+
     const auto background = root.value("background").toObject();
     const auto imageValue = background.value("image");
     if (!imageValue.isUndefined()) {
@@ -338,7 +449,7 @@ bool ThemeManager::readThemeFile(const QString& path,
 
     const auto backgroundEffect = background.value("effect").toString("none");
     if (backgroundEffect != "none" && backgroundEffect != "waves"
-        && backgroundEffect != "spectrum") {
+        && backgroundEffect != "spectrum" && backgroundEffect != "paperPlanes") {
         error = "Theme background effect is not supported.";
         return false;
     }
