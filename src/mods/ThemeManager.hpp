@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QObject>
 #include <QString>
+#include <QUrl>
 
 namespace yaap {
 
@@ -21,6 +22,11 @@ class ThemeManager final : public QObject {
     Q_PROPERTY(QColor error READ error NOTIFY themeChanged)
     Q_PROPERTY(int cornerRadius READ cornerRadius NOTIFY themeChanged)
     Q_PROPERTY(int spacing READ spacing NOTIFY themeChanged)
+    Q_PROPERTY(QUrl backgroundImageSource READ backgroundImageSource NOTIFY themeChanged)
+    Q_PROPERTY(QString backgroundImageFit READ backgroundImageFit NOTIFY themeChanged)
+    Q_PROPERTY(QString backgroundImageAlignment READ backgroundImageAlignment NOTIFY themeChanged)
+    Q_PROPERTY(qreal backgroundImageOpacity READ backgroundImageOpacity NOTIFY themeChanged)
+    Q_PROPERTY(bool backgroundImageShapesWindow READ backgroundImageShapesWindow NOTIFY themeChanged)
     Q_PROPERTY(QString backgroundEffect READ backgroundEffect NOTIFY themeChanged)
     Q_PROPERTY(int spectrumColumns READ spectrumColumns NOTIFY themeChanged)
     Q_PROPERTY(bool spectrumMirror READ spectrumMirror NOTIFY themeChanged)
@@ -50,6 +56,11 @@ public:
     [[nodiscard]] QColor error() const;
     [[nodiscard]] int cornerRadius() const noexcept;
     [[nodiscard]] int spacing() const noexcept;
+    [[nodiscard]] QUrl backgroundImageSource() const;
+    [[nodiscard]] QString backgroundImageFit() const;
+    [[nodiscard]] QString backgroundImageAlignment() const;
+    [[nodiscard]] qreal backgroundImageOpacity() const noexcept;
+    [[nodiscard]] bool backgroundImageShapesWindow() const noexcept;
     [[nodiscard]] QString backgroundEffect() const;
     [[nodiscard]] int spectrumColumns() const noexcept;
     [[nodiscard]] bool spectrumMirror() const noexcept;
@@ -77,6 +88,11 @@ private:
         QColor error{"#ff8a80"};
         int cornerRadius{8};
         int spacing{12};
+        QUrl backgroundImageSource;
+        QString backgroundImageFit{"preserveAspectFit"};
+        QString backgroundImageAlignment{"center"};
+        qreal backgroundImageOpacity{1.0};
+        bool backgroundImageShapesWindow{};
         QString backgroundEffect{"none"};
         int spectrumColumns{48};
         bool spectrumMirror{true};
@@ -90,7 +106,10 @@ private:
         qreal spectrumHueShiftDegrees{};
     };
 
-    static bool readThemeFile(const QString& path, ThemeData& data, QString& error);
+    static bool readThemeFile(const QString& path,
+        const QString& packageRoot,
+        ThemeData& data,
+        QString& error);
 
     QHash<QString, ThemeData> m_themes;
     QString m_currentThemeId{"builtin.default"};

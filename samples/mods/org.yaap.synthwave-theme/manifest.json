@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "org.yaap.synthwave-theme",
   "name": "Yaap Synthwave",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "publisher": {"id": "org.yaap", "name": "Yaap Project"},
   "api": {
     "minimum": "1.0",

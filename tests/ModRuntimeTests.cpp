@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
 #include <QTemporaryDir>
 
 namespace yaap {
@@ -124,6 +125,11 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
             : package == "org.yaap.synthwave-theme" ? QString{"spectrum"} : QString{"none"};
         CHECK(themes.backgroundEffect() == expectedEffect);
         if (package == "org.yaap.synthwave-theme") {
+            CHECK(themes.backgroundImageSource().fileName() == "neon-horizon.svg");
+            CHECK(themes.backgroundImageFit() == "stretch");
+            CHECK(themes.backgroundImageAlignment() == "center");
+            CHECK(themes.backgroundImageOpacity() == 0.68);
+            CHECK(themes.backgroundImageShapesWindow());
             CHECK(themes.spectrumColumns() == 48);
             CHECK(themes.spectrumMirror());
             CHECK(themes.spectrumOpacity() == 0.32);
@@ -168,6 +174,102 @@ TEST_CASE("Theme background effects are restricted to host-owned renderers")
     QString error;
     CHECK_FALSE(themes.registerTheme(theme, error));
     CHECK(error.contains("not supported"));
+}
+
+TEST_CASE("Theme background image composes underneath one host-owned effect")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("assets/shape.svg"), R"svg(
+      <svg xmlns="http://www.w3.org/2000/svg" width="120" height="48"
+           viewBox="0 0 120 48">
+        <path d="M4 44 L60 4 L116 44 Z" fill="#35f2d0"/>
+      </svg>
+    )svg");
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9},
+      "background":{
+        "image":{"asset":"assets/shape.svg","fit":"preserveAspectCrop",
+          "alignment":"bottom-right","opacity":0.65},
+        "effect":"waves"
+      }
+    })json");
+    ModManifest theme{.id = "org.example.image-theme", .name = "Image theme",
+        .version = "1.0", .contentDigest = "image-theme-digest",
+        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .theme = {.dataPath = directory.filePath("theme.json")},
+        .packageRoot = directory.path()};
+
+    ThemeManager themes;
+    QString error;
+    const auto registered = themes.registerTheme(theme, error);
+    INFO(error.toStdString());
+    REQUIRE(registered);
+    REQUIRE(themes.selectTheme(theme.id, error));
+    CHECK(themes.backgroundImageSource()
+        == QUrl::fromLocalFile(QFileInfo{directory.filePath("assets/shape.svg")}
+                .canonicalFilePath()));
+    CHECK(themes.backgroundImageFit() == "preserveAspectCrop");
+    CHECK(themes.backgroundImageAlignment() == "bottom-right");
+    CHECK(themes.backgroundImageOpacity() == 0.65);
+    CHECK(themes.backgroundEffect() == "waves");
+}
+
+TEST_CASE("Theme background images cannot escape their package")
+{
+    QTemporaryDir directory;
+    QDir{}.mkpath(directory.filePath("package"));
+    writeFile(directory.filePath("outside.svg"), R"svg(
+      <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>
+    )svg");
+    writeFile(directory.filePath("package/theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9},
+      "background":{"image":{"asset":"../outside.svg"},"effect":"spectrum"}
+    })json");
+    ModManifest theme{.id = "org.example.escape-image", .name = "Escape image",
+        .version = "1.0", .contentDigest = "escape-image-digest",
+        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .theme = {.dataPath = directory.filePath("package/theme.json")},
+        .packageRoot = directory.filePath("package")};
+
+    ThemeManager themes;
+    QString error;
+    CHECK_FALSE(themes.registerTheme(theme, error));
+    CHECK(error.contains("escapes the package"));
+}
+
+TEST_CASE("Theme background image accepts bounded transparent PNG files")
+{
+    QTemporaryDir directory;
+    QImage image{7, 5, QImage::Format_ARGB32_Premultiplied};
+    image.fill(Qt::transparent);
+    REQUIRE(image.save(directory.filePath("shape.png"), "PNG"));
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9},
+      "background":{"image":{"asset":"shape.png"},"effect":"spectrum"}
+    })json");
+    ModManifest theme{.id = "org.example.png-image", .name = "PNG image",
+        .version = "1.0", .contentDigest = "png-image-digest",
+        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .theme = {.dataPath = directory.filePath("theme.json")},
+        .packageRoot = directory.path()};
+
+    ThemeManager themes;
+    QString error;
+    REQUIRE(themes.registerTheme(theme, error));
+    REQUIRE(themes.selectTheme(theme.id, error));
+    CHECK(themes.backgroundImageFit() == "preserveAspectFit");
+    CHECK(themes.backgroundImageAlignment() == "center");
+    CHECK(themes.backgroundImageOpacity() == 1.0);
+    CHECK(themes.backgroundEffect() == "spectrum");
 }
 
 TEST_CASE("Spectrum theme parameters are strictly bounded")

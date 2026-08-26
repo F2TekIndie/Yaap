@@ -16,7 +16,7 @@ ApplicationWindow {
     visible: true
     flags: Qt.Window | Qt.FramelessWindowHint
     title: "Yaap — Music player prototype"
-    color: Theme.windowBottom
+    color: "transparent"
     palette.window: Theme.surface
     palette.windowText: Theme.primaryText
     palette.base: Theme.windowBottom
@@ -815,6 +815,40 @@ ApplicationWindow {
             GradientStop { position: 0.0; color: Theme.windowTop }
             GradientStop { position: 1.0; color: Theme.windowBottom }
         }
+    }
+
+    Image {
+        id: themeBackgroundImage
+
+        anchors.fill: parent
+        enabled: false
+        visible: source.toString().length > 0
+        source: Theme.backgroundImageSource
+        opacity: Theme.backgroundImageOpacity
+        asynchronous: true
+        cache: true
+        smooth: true
+        mipmap: true
+        fillMode: Theme.backgroundImageFit === "stretch"
+            ? Image.Stretch
+            : Theme.backgroundImageFit === "preserveAspectCrop"
+                ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+        horizontalAlignment: Theme.backgroundImageAlignment === "left"
+                || Theme.backgroundImageAlignment === "top-left"
+                || Theme.backgroundImageAlignment === "bottom-left"
+            ? Image.AlignLeft
+            : Theme.backgroundImageAlignment === "right"
+                    || Theme.backgroundImageAlignment === "top-right"
+                    || Theme.backgroundImageAlignment === "bottom-right"
+                ? Image.AlignRight : Image.AlignHCenter
+        verticalAlignment: Theme.backgroundImageAlignment === "top"
+                || Theme.backgroundImageAlignment === "top-left"
+                || Theme.backgroundImageAlignment === "top-right"
+            ? Image.AlignTop
+            : Theme.backgroundImageAlignment === "bottom"
+                    || Theme.backgroundImageAlignment === "bottom-left"
+                    || Theme.backgroundImageAlignment === "bottom-right"
+                ? Image.AlignBottom : Image.AlignVCenter
     }
 
     Loader {

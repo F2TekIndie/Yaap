@@ -51,16 +51,41 @@ package through `..` or a symbolic link.
 
 Theme mods point to a JSON document through `theme.data`. Schema 1 requires the
 seven palette values used by `Theme` and bounded `cornerRadius` and `spacing`
-metrics. The optional data-only `background.effect` token accepts `none` or
-`waves`; the trusted host renders the effect, so a theme cannot execute code.
-Theme changes are validated completely before being applied. API 1.1 adds the
-host-owned `spectrum` background effect. A theme may configure 8–48 columns,
+metrics. The optional data-only `background.effect` token accepts `none`,
+`waves`, or `spectrum`; the trusted host renders the effect, so a theme cannot
+execute code.
+Theme changes are validated completely before being applied. A theme may add one
+optional package-local PNG or SVG `background.image` underneath its single
+host-owned effect. The image object accepts an `asset`, `fit`
+(`preserveAspectFit`, `preserveAspectCrop`, or `stretch`), nine-point
+`alignment`, and opacity from 0 to 1. Image paths cannot escape the package;
+files and decoded PNG dimensions are bounded. Setting `windowShape` to `true`
+also uses the image alpha as the native window's visible and input-region hint;
+themes should keep all essential controls inside the opaque silhouette. API 1.1
+adds the host-owned
+`spectrum` background effect. A theme may configure 8–48 columns,
 mirroring, opacity, and bounded attack/release durations through the optional
 `background.parameters` object. It may also provide validated `gradientStart`,
 `gradientMiddle`, and `gradientEnd` colors. A spectrum theme can opt into the
 host-owned hue slider with `hueShiftAdjustable: true`; the selected hue is
 stored per theme and only shifts the effect gradient. Themes receive no PCM and
 still execute no code.
+
+```json
+"background": {
+  "image": {
+    "asset": "assets/background.svg",
+    "fit": "preserveAspectFit",
+    "alignment": "center",
+    "opacity": 0.8
+  },
+  "effect": "spectrum",
+  "parameters": {
+    "columns": 48,
+    "mirror": true
+  }
+}
+```
 
 ## UI extensions
 

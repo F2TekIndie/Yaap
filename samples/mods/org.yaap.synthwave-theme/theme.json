@@ -14,6 +14,13 @@
     "spacing": 14
   },
   "background": {
+    "image": {
+      "asset": "assets/neon-horizon.svg",
+      "fit": "stretch",
+      "alignment": "center",
+      "opacity": 0.68,
+      "windowShape": true
+    },
     "effect": "spectrum",
     "parameters": {
       "columns": 48,

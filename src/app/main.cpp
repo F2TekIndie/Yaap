@@ -3,6 +3,7 @@
 #include "app/LibraryController.hpp"
 #include "app/RadioController.hpp"
 #include "app/RadioBrowserDirectoryModel.hpp"
+#include "app/WindowShapeController.hpp"
 #include "library/LibraryDatabase.hpp"
 #include "library/LibraryIndexer.hpp"
 #include "mods/ExtensionRegistry.hpp"
@@ -26,11 +27,13 @@
 #include <QQmlContext>
 #include <qqml.h>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QStandardPaths>
 #include <QDebug>
 
 int main(int argc, char* argv[])
 {
+    QQuickWindow::setDefaultAlphaBuffer(true);
     QGuiApplication application(argc, argv);
     QCoreApplication::setApplicationName("Yaap");
     QCoreApplication::setApplicationVersion("0.2.0-prototype");
@@ -130,6 +133,13 @@ int main(int argc, char* argv[])
         [] { QCoreApplication::exit(EXIT_FAILURE); },
         Qt::QueuedConnection);
     engine.loadFromModule("Yaap.App", "Main");
+
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));
+    if (window == nullptr) {
+        qCritical() << "Yaap root object is not a QQuickWindow.";
+        return EXIT_FAILURE;
+    }
+    yaap::WindowShapeController windowShape{themes, *window};
 
     return application.exec();
 }

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560"
+     viewBox="0 0 900 560" role="img" aria-label="Shaped synthwave player skin">
+  <defs>
+    <linearGradient id="shell" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#40136f"/>
+      <stop offset="0.48" stop-color="#1b1030"/>
+      <stop offset="1" stop-color="#071b2c"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#35f2d0"/>
+      <stop offset="0.5" stop-color="#9b5de5"/>
+      <stop offset="1" stop-color="#ff2bd6"/>
+    </linearGradient>
+    <radialGradient id="speaker" cx="50%" cy="45%" r="55%">
+      <stop offset="0" stop-color="#9b5de5" stop-opacity="0.68"/>
+      <stop offset="0.55" stop-color="#160b2d"/>
+      <stop offset="1" stop-color="#35f2d0" stop-opacity="0.75"/>
+    </radialGradient>
+  </defs>
+
+  <!-- This filled path is the actual native-window silhouette. -->
+  <path d="M78 0 H742 L770 0 H900 V86 L878 108 V194 L894 214 V346
+           L878 366 V452 L900 474 V518 H842 L812 548 H748 L728 560
+           H126 L102 540 H42 L18 516 V484 L0 462 V118 L20 94 V38 H58 Z"
+        fill="url(#shell)" stroke="url(#edge)" stroke-width="6"
+        stroke-linejoin="round"/>
+
+  <path d="M88 22 H750 L774 14 H881 V78 L857 102 V458 L879 480 V498
+           H830 L800 526 H110 L88 510 H55 L34 488 V124 L54 102 V58 H72 Z"
+        fill="none" stroke="#ff2bd6" stroke-width="2" stroke-opacity="0.55"/>
+
+  <g opacity="0.72">
+    <circle cx="44" cy="184" r="34" fill="url(#speaker)" stroke="#35f2d0"
+            stroke-width="3"/>
+    <circle cx="44" cy="184" r="18" fill="#090713" stroke="#ff2bd6"
+            stroke-width="2"/>
+    <circle cx="856" cy="398" r="34" fill="url(#speaker)" stroke="#ff2bd6"
+            stroke-width="3"/>
+    <circle cx="856" cy="398" r="18" fill="#090713" stroke="#35f2d0"
+            stroke-width="2"/>
+  </g>
+
+  <g fill="none" stroke-linecap="round">
+    <path d="M128 38 H690" stroke="#35f2d0" stroke-width="3"
+          stroke-opacity="0.48"/>
+    <path d="M118 516 H744" stroke="#ff2bd6" stroke-width="3"
+          stroke-opacity="0.48"/>
+    <path d="M74 130 V430" stroke="#9b5de5" stroke-width="2"
+          stroke-opacity="0.42"/>
+    <path d="M826 112 V350" stroke="#35f2d0" stroke-width="2"
+          stroke-opacity="0.42"/>
+  </g>
+
+  <g fill="#35f2d0" opacity="0.46">
+    <circle cx="102" cy="38" r="4"/>
+    <circle cx="718" cy="38" r="4"/>
+    <circle cx="96" cy="516" r="4"/>
+  </g>
+  <g fill="#ff2bd6" opacity="0.5">
+    <path d="M804 42 l12 8 -12 8 -12 -8 Z"/>
+    <path d="M836 42 l12 8 -12 8 -12 -8 Z"/>
+    <path d="M774 504 l12 8 -12 8 -12 -8 Z"/>
+  </g>
+</svg>

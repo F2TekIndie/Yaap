@@ -1,9 +1,13 @@
 #include "mods/ThemeManager.hpp"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QImageReader>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QSet>
 #include <QSettings>
 
 #include <cmath>
@@ -12,6 +16,9 @@ namespace yaap {
 namespace {
 
 constexpr qint64 maximumThemeBytes = 256 * 1024;
+constexpr qint64 maximumBackgroundImageBytes = 8 * 1024 * 1024;
+constexpr qint64 maximumBackgroundRasterPixels = 32 * 1024 * 1024;
+constexpr int maximumBackgroundRasterDimension = 8'192;
 constexpr qreal minimumHueShiftDegrees = -180.0;
 constexpr qreal maximumHueShiftDegrees = 180.0;
 
@@ -49,6 +56,68 @@ QColor hueShifted(const QColor& source, const qreal degrees)
     return shifted.toRgb();
 }
 
+bool readBackgroundImage(const QString& packageRoot,
+    const QString& relativePath,
+    QUrl& output,
+    QString& error)
+{
+    if (relativePath.trimmed().isEmpty() || QDir::isAbsolutePath(relativePath)
+        || !QUrl{relativePath}.scheme().isEmpty()) {
+        error = "Theme background image must be a non-empty package-relative path.";
+        return false;
+    }
+
+    const auto canonicalRoot = QFileInfo{packageRoot}.canonicalFilePath();
+    const QFileInfo candidate{QDir{canonicalRoot}.filePath(relativePath)};
+    const auto canonicalCandidate = candidate.canonicalFilePath();
+    const auto rootPrefix = QDir::cleanPath(canonicalRoot) + '/';
+#ifdef _WIN32
+    constexpr auto pathCaseSensitivity = Qt::CaseInsensitive;
+#else
+    constexpr auto pathCaseSensitivity = Qt::CaseSensitive;
+#endif
+    if (canonicalRoot.isEmpty() || canonicalCandidate.isEmpty() || !candidate.isFile()
+        || (!QDir::cleanPath(canonicalCandidate).startsWith(
+                rootPrefix, pathCaseSensitivity)
+            && canonicalCandidate.compare(canonicalRoot, pathCaseSensitivity) != 0)) {
+        error = "Theme background image escapes the package or does not name a file.";
+        return false;
+    }
+    if (candidate.size() <= 0 || candidate.size() > maximumBackgroundImageBytes) {
+        error = "Theme background image must be between 1 byte and 8 MiB.";
+        return false;
+    }
+
+    const auto suffix = candidate.suffix().toLower();
+    if (suffix != "png" && suffix != "svg") {
+        error = "Theme background image must use PNG or SVG format.";
+        return false;
+    }
+    QImageReader reader{canonicalCandidate};
+    reader.setDecideFormatFromContent(true);
+    if (!reader.canRead()) {
+        error = "Theme background image could not be decoded: " + reader.errorString();
+        return false;
+    }
+    const auto detectedFormat = QString::fromLatin1(reader.format()).toLower();
+    if (detectedFormat != suffix) {
+        error = "Theme background image extension does not match its contents.";
+        return false;
+    }
+    if (detectedFormat == "png") {
+        const auto size = reader.size();
+        if (!size.isValid() || size.width() > maximumBackgroundRasterDimension
+            || size.height() > maximumBackgroundRasterDimension
+            || static_cast<qint64>(size.width()) * size.height()
+                > maximumBackgroundRasterPixels) {
+            error = "Theme PNG dimensions exceed the supported decoding bounds.";
+            return false;
+        }
+    }
+    output = QUrl::fromLocalFile(canonicalCandidate);
+    return true;
+}
+
 } // namespace
 
 ThemeManager::ThemeManager(QObject* parent)
@@ -76,7 +145,10 @@ bool ThemeManager::registerTheme(const ModManifest& manifest, QString& error)
         return false;
     }
     ThemeData data;
-    if (!readThemeFile(manifest.theme.dataPath, data, error)) {
+    const auto packageRoot = manifest.packageRoot.isEmpty()
+        ? QFileInfo{manifest.theme.dataPath}.absolutePath()
+        : manifest.packageRoot;
+    if (!readThemeFile(manifest.theme.dataPath, packageRoot, data, error)) {
         return false;
     }
     m_themes.insert(manifest.id, std::move(data));
@@ -117,6 +189,20 @@ QColor ThemeManager::accent() const { return m_current.accent; }
 QColor ThemeManager::error() const { return m_current.error; }
 int ThemeManager::cornerRadius() const noexcept { return m_current.cornerRadius; }
 int ThemeManager::spacing() const noexcept { return m_current.spacing; }
+QUrl ThemeManager::backgroundImageSource() const { return m_current.backgroundImageSource; }
+QString ThemeManager::backgroundImageFit() const { return m_current.backgroundImageFit; }
+QString ThemeManager::backgroundImageAlignment() const
+{
+    return m_current.backgroundImageAlignment;
+}
+qreal ThemeManager::backgroundImageOpacity() const noexcept
+{
+    return m_current.backgroundImageOpacity;
+}
+bool ThemeManager::backgroundImageShapesWindow() const noexcept
+{
+    return m_current.backgroundImageShapesWindow;
+}
 QString ThemeManager::backgroundEffect() const { return m_current.backgroundEffect; }
 int ThemeManager::spectrumColumns() const noexcept { return m_current.spectrumColumns; }
 bool ThemeManager::spectrumMirror() const noexcept { return m_current.spectrumMirror; }
@@ -164,7 +250,10 @@ void ThemeManager::setSpectrumHueShiftDegrees(const qreal degrees)
     emit themeChanged();
 }
 
-bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& error)
+bool ThemeManager::readThemeFile(const QString& path,
+    const QString& packageRoot,
+    ThemeData& data,
+    QString& error)
 {
     QFile file{path};
     if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 || file.size() > maximumThemeBytes) {
@@ -206,6 +295,47 @@ bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& 
     data.spectrumGradientEnd = data.accent;
 
     const auto background = root.value("background").toObject();
+    const auto imageValue = background.value("image");
+    if (!imageValue.isUndefined()) {
+        if (!imageValue.isObject()) {
+            error = "Theme background image declaration must be an object.";
+            return false;
+        }
+        const auto image = imageValue.toObject();
+        const auto assetValue = image.value("asset");
+        const auto fitValue = image.value("fit");
+        const auto alignmentValue = image.value("alignment");
+        const auto opacityValue = image.value("opacity");
+        const auto windowShapeValue = image.value("windowShape");
+        if (!assetValue.isString()
+            || (!fitValue.isUndefined() && !fitValue.isString())
+            || (!alignmentValue.isUndefined() && !alignmentValue.isString())
+            || (!opacityValue.isUndefined() && !opacityValue.isDouble())
+            || (!windowShapeValue.isUndefined() && !windowShapeValue.isBool())) {
+            error = "Theme background image properties have invalid types.";
+            return false;
+        }
+        data.backgroundImageFit = fitValue.toString(data.backgroundImageFit);
+        data.backgroundImageAlignment = alignmentValue.toString(
+            data.backgroundImageAlignment);
+        data.backgroundImageOpacity = opacityValue.toDouble(data.backgroundImageOpacity);
+        data.backgroundImageShapesWindow = windowShapeValue.toBool(false);
+        static const QSet<QString> supportedFits{
+            "preserveAspectFit", "preserveAspectCrop", "stretch"};
+        static const QSet<QString> supportedAlignments{"center", "top", "top-left",
+            "top-right", "left", "right", "bottom", "bottom-left", "bottom-right"};
+        if (!supportedFits.contains(data.backgroundImageFit)
+            || !supportedAlignments.contains(data.backgroundImageAlignment)
+            || data.backgroundImageOpacity < 0.0 || data.backgroundImageOpacity > 1.0) {
+            error = "Theme background image properties are outside supported values.";
+            return false;
+        }
+        if (!readBackgroundImage(packageRoot, assetValue.toString(),
+                data.backgroundImageSource, error)) {
+            return false;
+        }
+    }
+
     const auto backgroundEffect = background.value("effect").toString("none");
     if (backgroundEffect != "none" && backgroundEffect != "waves"
         && backgroundEffect != "spectrum") {

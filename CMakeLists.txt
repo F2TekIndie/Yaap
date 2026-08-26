@@ -74,7 +74,7 @@ include(CTest)
 if(YAAP_BUILD_APP OR BUILD_TESTING)
   find_package(FFmpeg REQUIRED)
   find_path(MINIAUDIO_INCLUDE_DIR NAMES miniaudio.h REQUIRED)
-  find_package(Qt6 6.5 REQUIRED COMPONENTS Core Concurrent Gui Network Qml Sql)
+  find_package(Qt6 6.5 REQUIRED COMPONENTS Core Concurrent Gui Network Qml Sql Svg)
 
   add_library(
     yaap_extension_api
@@ -143,7 +143,7 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
   target_include_directories(yaap_mod_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(
     yaap_mod_runtime
-    PUBLIC Yaap::ExtensionApi Qt6::Core Qt6::Gui
+    PUBLIC Yaap::ExtensionApi Qt6::Core Qt6::Gui Qt6::Svg
   )
   yaap_enable_warnings(yaap_mod_runtime)
 
@@ -335,6 +335,8 @@ if(YAAP_BUILD_APP)
     src/app/RadioController.hpp
     src/app/RadioBrowserDirectoryModel.cpp
     src/app/RadioBrowserDirectoryModel.hpp
+    src/app/WindowShapeController.cpp
+    src/app/WindowShapeController.hpp
   )
 
   qt_add_qml_module(
