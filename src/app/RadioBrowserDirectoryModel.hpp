@@ -51,6 +51,7 @@ public:
     Q_INVOKABLE void refreshPopular();
     Q_INVOKABLE void search(const QString& name);
     Q_INVOKABLE void play(int row);
+    Q_INVOKABLE void save(int row);
     Q_INVOKABLE void cancel();
 
 signals:
@@ -59,6 +60,7 @@ signals:
     void staleChanged();
     void errorMessageChanged();
     void playbackRequested(const QUrl& url, const QString& title);
+    void saveRequested(const yaap::RadioBrowserStation& station);
 
 private:
     void request(QString cacheKey,

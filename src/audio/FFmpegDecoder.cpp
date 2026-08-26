@@ -1,6 +1,7 @@
 #include "audio/FFmpegDecoder.hpp"
 
 #include "audio/PcmFormat.hpp"
+#include "audio/StreamMetadata.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,6 +23,8 @@ extern "C" {
 #include <libavutil/dict.h>
 #include <libavutil/error.h>
 #include <libavutil/mathematics.h>
+#include <libavutil/mem.h>
+#include <libavutil/opt.h>
 #include <libavutil/samplefmt.h>
 #include <libswresample/swresample.h>
 }
@@ -170,12 +173,25 @@ struct OperationResult final {
     return av_rescale_q(context.duration, AV_TIME_BASE_Q, AVRational{1, 1'000});
 }
 
+[[nodiscard]] std::vector<StreamMetadataParser::Field> metadataFields(
+    const AVDictionary* dictionary)
+{
+    std::vector<StreamMetadataParser::Field> fields;
+    const AVDictionaryEntry* entry = nullptr;
+    while ((entry = av_dict_iterate(dictionary, entry)) != nullptr) {
+        fields.emplace_back(entry->key != nullptr ? entry->key : "",
+            entry->value != nullptr ? entry->value : "");
+    }
+    return fields;
+}
+
 } // namespace
 
 StreamDecodeResult FFmpegDecoder::streamFile(
     const std::filesystem::path& path,
     PcmStream& destination,
     ReadyCallback readyCallback,
+    MetadataCallback metadataCallback,
     StreamOptions options,
     const std::stop_token stopToken) const
 {
@@ -183,23 +199,28 @@ StreamDecodeResult FFmpegDecoder::streamFile(
         return {.error = "No input file was selected."};
     }
     return streamInput(
-        utf8Path(path), destination, std::move(readyCallback), std::move(options), stopToken);
+        utf8Path(path), destination, std::move(readyCallback), std::move(metadataCallback),
+        std::move(options), stopToken);
 }
 
 StreamDecodeResult FFmpegDecoder::streamUrl(
     const std::string& url,
     PcmStream& destination,
     ReadyCallback readyCallback,
+    MetadataCallback metadataCallback,
     StreamOptions options,
     const std::stop_token stopToken) const
 {
-    return streamInput(url, destination, std::move(readyCallback), std::move(options), stopToken);
+    options.requestIcyMetadata = true;
+    return streamInput(url, destination, std::move(readyCallback), std::move(metadataCallback),
+        std::move(options), stopToken);
 }
 
 StreamDecodeResult FFmpegDecoder::streamInput(
     const std::string& input,
     PcmStream& destination,
     ReadyCallback readyCallback,
+    MetadataCallback metadataCallback,
     StreamOptions options,
     const std::stop_token stopToken) const
 {
@@ -231,6 +252,9 @@ StreamDecodeResult FFmpegDecoder::streamInput(
     }
     if (!options.httpHeaders.empty()) {
         av_dict_set(&rawOpenOptions, "headers", options.httpHeaders.c_str(), 0);
+    }
+    if (options.requestIcyMetadata) {
+        av_dict_set(&rawOpenOptions, "icy", "1", 0);
     }
     if (options.reconnectNetworkStream) {
         av_dict_set(&rawOpenOptions, "reconnect", "1", 0);
@@ -367,6 +391,44 @@ StreamDecodeResult FFmpegDecoder::streamInput(
         streamInfo.title = title->value;
     }
 
+    std::optional<NowPlayingMetadata> lastMetadata;
+    const auto publishMetadata = [&](std::optional<NowPlayingMetadata> metadata) {
+        if (!metadata || !metadataCallback
+            || (lastMetadata && lastMetadata->sameContentAs(*metadata))) {
+            return;
+        }
+        lastMetadata = *metadata;
+        metadataCallback(*metadata);
+    };
+    const auto publishDictionary = [&](const AVDictionary* dictionary,
+                                       const NowPlayingMetadataSource source) {
+        publishMetadata(StreamMetadataParser::parseFields(
+            metadataFields(dictionary), source));
+    };
+    const auto pollIcyMetadata = [&] {
+        if (!options.requestIcyMetadata || formatContext->pb == nullptr) {
+            return;
+        }
+
+        std::uint8_t* rawMetadata = nullptr;
+        if (av_opt_get(formatContext->pb, "icy_metadata_packet", AV_OPT_SEARCH_CHILDREN,
+                &rawMetadata) >= 0
+            && rawMetadata != nullptr && rawMetadata[0] != '\0') {
+            publishMetadata(StreamMetadataParser::parseIcy(
+                reinterpret_cast<const char*>(rawMetadata)));
+        }
+        av_free(rawMetadata);
+
+        AVDictionary* rawIcyDictionary = nullptr;
+        if (av_opt_get_dict_val(formatContext->pb, "metadata", AV_OPT_SEARCH_CHILDREN,
+                &rawIcyDictionary) >= 0
+            && rawIcyDictionary != nullptr) {
+            DictionaryPtr icyDictionary{rawIcyDictionary};
+            publishDictionary(icyDictionary.get(), NowPlayingMetadataSource::Icy);
+        }
+    };
+    pollIcyMetadata();
+
     std::vector<float> convertedSamples;
     std::size_t decodedFrameCount = 0;
     bool readyWasPublished = false;
@@ -376,6 +438,7 @@ StreamDecodeResult FFmpegDecoder::streamInput(
     const auto prebufferTargetFrames = std::min(
         requestedPrebufferFrames,
         std::max<std::size_t>(destination.capacityFrames() / 2, 1));
+    auto nextIcyMetadataPoll = std::chrono::steady_clock::now();
 
     const auto writeSamples = [&](std::span<const float> samples) -> OperationResult {
         while (!samples.empty()) {
@@ -490,6 +553,40 @@ StreamDecodeResult FFmpegDecoder::streamInput(
             return {.info = std::move(streamInfo),
                     .decodedFrameCount = decodedFrameCount,
                     .cancelled = true};
+        }
+
+        if (formatContext->event_flags & AVFMT_EVENT_FLAG_METADATA_UPDATED) {
+            publishDictionary(formatContext->metadata,
+                NowPlayingMetadataSource::Container);
+            formatContext->event_flags &= ~AVFMT_EVENT_FLAG_METADATA_UPDATED;
+        }
+        for (unsigned int streamIndex = 0; streamIndex < formatContext->nb_streams;
+             ++streamIndex) {
+            auto* stream = formatContext->streams[streamIndex];
+            if (stream->event_flags & AVSTREAM_EVENT_FLAG_METADATA_UPDATED) {
+                publishDictionary(stream->metadata,
+                    NowPlayingMetadataSource::Container);
+                stream->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
+            }
+        }
+
+        std::size_t sideDataSize{};
+        if (const auto* sideData = av_packet_get_side_data(packet.get(),
+                AV_PKT_DATA_STRINGS_METADATA, &sideDataSize);
+            sideData != nullptr && sideDataSize > 0) {
+            AVDictionary* rawPacketMetadata = nullptr;
+            if (av_packet_unpack_dictionary(
+                    sideData, sideDataSize, &rawPacketMetadata) >= 0) {
+                DictionaryPtr packetMetadata{rawPacketMetadata};
+                publishDictionary(packetMetadata.get(),
+                    NowPlayingMetadataSource::TimedId3);
+            }
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= nextIcyMetadataPoll) {
+            pollIcyMetadata();
+            nextIcyMetadataPoll = now + std::chrono::milliseconds{100};
         }
 
         if (packet->stream_index == audioStreamIndex) {

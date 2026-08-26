@@ -1,3 +1,5 @@
+#include "app/RadioController.hpp"
+#include "audio/StreamMetadata.hpp"
 #include "radio/RadioPlaylist.hpp"
 #include "radio/RadioBrowserClient.hpp"
 
@@ -38,6 +40,34 @@ TEST_CASE("ICY demuxer handles metadata split across chunks")
     auto second = demuxer.consume(QByteArray{"t';"}.leftJustified(16, '\0'));
     REQUIRE(second.streamTitle.has_value());
     CHECK(*second.streamTitle == "Test");
+}
+
+TEST_CASE("Stream metadata parser normalizes ICY and dictionary fields")
+{
+    const auto icy = StreamMetadataParser::parseIcy(
+        "StreamTitle='Example Artist - Example Song';StreamUrl='https://example.test';");
+    REQUIRE(icy.has_value());
+    CHECK(icy->artist == "Example Artist");
+    CHECK(icy->title == "Example Song");
+    CHECK(icy->displayText == "Example Artist — Example Song");
+    CHECK(icy->streamUrl == "https://example.test");
+
+    const auto semicolonTitle = StreamMetadataParser::parseIcy(
+        "StreamTitle='Artist - A Song; Part II';");
+    REQUIRE(semicolonTitle.has_value());
+    CHECK(semicolonTitle->title == "A Song; Part II");
+
+    const auto fields = StreamMetadataParser::parseFields(
+        {{"ARTIST", "Artist"}, {"title", "Title"}, {"album", "Album"}},
+        NowPlayingMetadataSource::TimedId3);
+    REQUIRE(fields.has_value());
+    CHECK(fields->artist == "Artist");
+    CHECK(fields->title == "Title");
+    CHECK(fields->album == "Album");
+    CHECK(fields->source == NowPlayingMetadataSource::TimedId3);
+
+    CHECK_FALSE(StreamMetadataParser::parseIcy("StreamUrl='https://example.test';"));
+    CHECK_FALSE(StreamMetadataParser::parseIcy(std::string(20 * 1024, 'x')));
 }
 
 TEST_CASE("Reconnect policy applies capped exponential backoff")
@@ -90,6 +120,42 @@ TEST_CASE("Radio Browser parser rejects malformed and oversized responses")
     CHECK_FALSE(RadioBrowserParser::parseStations("not-json").succeeded());
     CHECK_FALSE(RadioBrowserParser::parseStations(
         QByteArray{2 * 1024 * 1024 + 1, 'x'}).succeeded());
+}
+
+TEST_CASE("Saved Radio Browser stations retain identifying details")
+{
+    QSettings{}.clear();
+    RadioBrowserStation station;
+    station.stationUuid = "9617a958-0601-11e8-ae97-52543be04c81";
+    station.name = "Detailed Radio";
+    station.streamUrl = QUrl{"https://radio.example/live"};
+    station.homepageUrl = QUrl{"https://radio.example"};
+    station.faviconUrl = QUrl{"https://radio.example/icon.png"};
+    station.countryCode = "DE";
+    station.language = "German";
+    station.tags = "jazz,public radio";
+    station.codec = "MP3";
+    station.bitrate = 192;
+    station.hls = true;
+
+    {
+        RadioController controller;
+        REQUIRE(controller.addDirectoryStation(station));
+        REQUIRE(controller.count() == 1);
+    }
+
+    RadioController restored;
+    REQUIRE(restored.count() == 1);
+    const auto row = restored.index(0);
+    CHECK(restored.data(row, RadioController::NameRole).toString() == "Detailed Radio");
+    CHECK(restored.data(row, RadioController::HomepageUrlRole).toUrl()
+        == QUrl{"https://radio.example"});
+    CHECK(restored.data(row, RadioController::CountryCodeRole).toString() == "DE");
+    CHECK(restored.data(row, RadioController::LanguageRole).toString() == "German");
+    CHECK(restored.data(row, RadioController::TagsRole).toString() == "jazz,public radio");
+    CHECK(restored.data(row, RadioController::CodecRole).toString() == "MP3");
+    CHECK(restored.data(row, RadioController::BitrateRole).toInt() == 192);
+    CHECK(restored.data(row, RadioController::HlsRole).toBool());
 }
 
 } // namespace yaap

@@ -11,6 +11,7 @@
 namespace yaap {
 
 class RadioBrowserClient;
+struct RadioBrowserStation;
 
 class RadioController final : public QAbstractListModel {
     Q_OBJECT
@@ -18,7 +19,19 @@ class RadioController final : public QAbstractListModel {
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
 public:
-    enum Role { NameRole = Qt::UserRole + 1, UrlRole };
+    enum Role {
+        NameRole = Qt::UserRole + 1,
+        UrlRole,
+        DirectoryUuidRole,
+        HomepageUrlRole,
+        FaviconUrlRole,
+        CountryCodeRole,
+        LanguageRole,
+        TagsRole,
+        CodecRole,
+        BitrateRole,
+        HlsRole,
+    };
     Q_ENUM(Role)
 
     explicit RadioController(RadioBrowserClient* directoryClient = nullptr,
@@ -32,6 +45,7 @@ public:
     Q_INVOKABLE bool addStation(const QString& name, const QString& streamUrl);
     Q_INVOKABLE bool addDirectoryStation(const QString& name, const QUrl& streamUrl,
         const QString& stationUuid);
+    bool addDirectoryStation(const RadioBrowserStation& station);
     Q_INVOKABLE void importPlaylist(const QUrl& playlistUrl);
     Q_INVOKABLE void removeStation(int row);
     Q_INVOKABLE void play(int row);

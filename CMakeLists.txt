@@ -58,6 +58,7 @@ add_library(
   src/core/PlaybackState.hpp
   src/domain/PlaybackQueue.cpp
   src/domain/PlaybackQueue.hpp
+  src/domain/NowPlayingMetadata.hpp
   src/domain/PlaybackSession.hpp
   src/domain/Playlist.hpp
   src/domain/Provider.hpp
@@ -240,6 +241,8 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
     src/audio/PcmStream.hpp
     src/audio/SpscPcmRingBuffer.cpp
     src/audio/SpscPcmRingBuffer.hpp
+    src/audio/StreamMetadata.cpp
+    src/audio/StreamMetadata.hpp
   )
   add_library(Yaap::Audio ALIAS yaap_audio)
   target_include_directories(
@@ -477,6 +480,8 @@ if(BUILD_TESTING)
     yaap_tests
     src/app/PlayerController.cpp
     src/app/PlayerController.hpp
+    src/app/RadioController.cpp
+    src/app/RadioController.hpp
     tests/TestMain.cpp
     tests/FFmpegDecoderTests.cpp
     tests/DomainModelTests.cpp

@@ -577,6 +577,12 @@ ApplicationWindow {
                             required property int index
                             required property string stationName
                             required property url streamUrl
+                            required property string stationCountryCode
+                            required property string stationLanguage
+                            required property string stationTags
+                            required property string stationCodec
+                            required property int stationBitrate
+                            required property bool stationHls
                             width: ListView.view.width
                             height: savedRadioDetails.implicitHeight + 24
                             RowLayout {
@@ -592,6 +598,26 @@ ApplicationWindow {
                                         text: stationName
                                         color: Theme.primaryText
                                         font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        visible: text.length > 0
+                                        text: [stationCountryCode, stationLanguage,
+                                            stationCodec + (stationBitrate > 0
+                                                ? " " + stationBitrate + " kbps" : ""),
+                                            stationHls ? "HLS" : ""]
+                                            .filter(value => value.length > 0).join(" · ")
+                                        color: Theme.secondaryText
+                                        elide: Text.ElideRight
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        visible: stationTags.length > 0
+                                        text: stationTags
+                                        color: Theme.secondaryText
                                         elide: Text.ElideRight
                                     }
                                     Label {
@@ -733,8 +759,7 @@ ApplicationWindow {
                                     Button { text: "Play"; onClicked: RadioDirectory.play(index) }
                                     Button {
                                         text: "Save"
-                                        onClicked: Radio.addDirectoryStation(
-                                            stationName, streamUrl, stationUuid)
+                                        onClicked: RadioDirectory.save(index)
                                     }
                                 }
                             }
@@ -865,11 +890,33 @@ ApplicationWindow {
         Item { Layout.fillHeight: true }
 
         Label {
+            id: nowPlayingTitle
             Layout.fillWidth: true
-            text: Player.title
+            text: Player.hasNowPlayingMetadata
+                ? (Player.nowPlayingTitle.length > 0
+                    ? Player.nowPlayingTitle : Player.nowPlayingText)
+                : Player.title
             color: Theme.primaryText
             font.pixelSize: 30
             font.weight: Font.DemiBold
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideMiddle
+
+            HoverHandler { id: nowPlayingTitleHover }
+            ToolTip {
+                visible: nowPlayingTitleHover.hovered && nowPlayingTitle.truncated
+                text: nowPlayingTitle.text
+                delay: 400
+            }
+        }
+
+        Label {
+            Layout.fillWidth: true
+            visible: Player.hasNowPlayingMetadata
+            text: [Player.nowPlayingArtist, Player.stationTitle]
+                .filter(value => value.length > 0).join(" · ")
+                + (Player.nowPlayingMetadataStale ? " · reconnecting" : "")
+            color: Theme.secondaryText
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideMiddle
         }

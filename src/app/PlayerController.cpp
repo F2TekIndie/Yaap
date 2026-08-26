@@ -3,6 +3,7 @@
 #include "audio/FFmpegDecoder.hpp"
 
 #include <QFileInfo>
+#include <QByteArray>
 #include <QDebug>
 #include <QMetaObject>
 #include <QPointer>
@@ -23,6 +24,16 @@ namespace {
     return std::filesystem::path{
         std::string{encoded.constData(), static_cast<std::size_t>(encoded.size())}};
 #endif
+}
+
+[[nodiscard]] QString metadataText(const std::string& value)
+{
+    const QByteArray bytes{value.data(), static_cast<qsizetype>(value.size())};
+    auto decoded = QString::fromUtf8(bytes);
+    if (decoded.contains(QChar::ReplacementCharacter)) {
+        decoded = QString::fromLatin1(bytes);
+    }
+    return decoded;
 }
 
 } // namespace
@@ -55,6 +66,20 @@ PlayerController::~PlayerController()
 QString PlayerController::title() const
 {
     return m_title;
+}
+
+QString PlayerController::stationTitle() const { return m_sourceFallbackTitle; }
+QString PlayerController::nowPlayingText() const { return m_nowPlayingText; }
+QString PlayerController::nowPlayingArtist() const { return m_nowPlayingArtist; }
+QString PlayerController::nowPlayingTitle() const { return m_nowPlayingTitle; }
+QString PlayerController::nowPlayingAlbum() const { return m_nowPlayingAlbum; }
+bool PlayerController::hasNowPlayingMetadata() const noexcept
+{
+    return !m_nowPlayingText.isEmpty();
+}
+bool PlayerController::nowPlayingMetadataStale() const noexcept
+{
+    return m_nowPlayingMetadataStale;
 }
 
 QString PlayerController::stateName() const
@@ -174,7 +199,13 @@ void PlayerController::startStream(
         m_reconnectAttempt = 0;
         m_reconnectScheduled = false;
         m_title = m_sourceFallbackTitle;
+        m_nowPlayingText.clear();
+        m_nowPlayingArtist.clear();
+        m_nowPlayingTitle.clear();
+        m_nowPlayingAlbum.clear();
+        m_nowPlayingMetadataStale = false;
         emit titleChanged();
+        emit nowPlayingChanged();
     }
     m_errorMessage.clear();
     m_positionMilliseconds = std::max<qint64>(startPositionMilliseconds, 0);
@@ -239,14 +270,36 @@ void PlayerController::startStream(
                     },
                     Qt::QueuedConnection);
             };
+            const auto metadataCallback = [guardedThis, generation, stream](
+                                              const NowPlayingMetadata& metadata) {
+                if (!guardedThis) {
+                    return;
+                }
+                QMetaObject::invokeMethod(
+                    guardedThis,
+                    [guardedThis, generation, stream, metadata] {
+                        if (!guardedThis
+                            || generation != guardedThis->m_generation.load(std::memory_order_acquire)
+                            || guardedThis->m_stream != stream) {
+                            return;
+                        }
+                        guardedThis->m_nowPlayingText = metadataText(metadata.displayText);
+                        guardedThis->m_nowPlayingArtist = metadataText(metadata.artist);
+                        guardedThis->m_nowPlayingTitle = metadataText(metadata.title);
+                        guardedThis->m_nowPlayingAlbum = metadataText(metadata.album);
+                        guardedThis->m_nowPlayingMetadataStale = false;
+                        emit guardedThis->nowPlayingChanged();
+                    },
+                    Qt::QueuedConnection);
+            };
 
             StreamOptions streamOptions;
             streamOptions.startPositionMilliseconds = startPositionMilliseconds;
             streamOptions.reconnectNetworkStream = sourceIsNetwork;
             auto sharedResult = std::make_shared<StreamDecodeResult>(sourceIsNetwork
-                ? decoder.streamUrl(sourceUrl, *stream, readyCallback,
+                ? decoder.streamUrl(sourceUrl, *stream, readyCallback, metadataCallback,
                     std::move(streamOptions), stopToken)
-                : decoder.streamFile(sourcePath, *stream, readyCallback,
+                : decoder.streamFile(sourcePath, *stream, readyCallback, metadataCallback,
                     std::move(streamOptions), stopToken));
 
             if (!guardedThis) {
@@ -424,6 +477,10 @@ void PlayerController::scheduleReconnect(QString reason)
     }
     m_output.pause();
     m_errorMessage = std::move(reason) + " Reconnecting…";
+    if (!m_nowPlayingText.isEmpty()) {
+        m_nowPlayingMetadataStale = true;
+        emit nowPlayingChanged();
+    }
     emit errorMessageChanged();
     if (m_stateMachine.state() != PlaybackState::Finished) {
         setState(PlaybackState::Buffering);

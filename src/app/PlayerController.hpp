@@ -23,6 +23,13 @@ namespace yaap {
 class PlayerController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
+    Q_PROPERTY(QString stationTitle READ stationTitle NOTIFY titleChanged)
+    Q_PROPERTY(QString nowPlayingText READ nowPlayingText NOTIFY nowPlayingChanged)
+    Q_PROPERTY(QString nowPlayingArtist READ nowPlayingArtist NOTIFY nowPlayingChanged)
+    Q_PROPERTY(QString nowPlayingTitle READ nowPlayingTitle NOTIFY nowPlayingChanged)
+    Q_PROPERTY(QString nowPlayingAlbum READ nowPlayingAlbum NOTIFY nowPlayingChanged)
+    Q_PROPERTY(bool hasNowPlayingMetadata READ hasNowPlayingMetadata NOTIFY nowPlayingChanged)
+    Q_PROPERTY(bool nowPlayingMetadataStale READ nowPlayingMetadataStale NOTIFY nowPlayingChanged)
     Q_PROPERTY(QString stateName READ stateName NOTIFY stateChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(qint64 positionMilliseconds READ positionMilliseconds NOTIFY positionChanged)
@@ -41,6 +48,13 @@ public:
     PlayerController& operator=(const PlayerController&) = delete;
 
     [[nodiscard]] QString title() const;
+    [[nodiscard]] QString stationTitle() const;
+    [[nodiscard]] QString nowPlayingText() const;
+    [[nodiscard]] QString nowPlayingArtist() const;
+    [[nodiscard]] QString nowPlayingTitle() const;
+    [[nodiscard]] QString nowPlayingAlbum() const;
+    [[nodiscard]] bool hasNowPlayingMetadata() const noexcept;
+    [[nodiscard]] bool nowPlayingMetadataStale() const noexcept;
     [[nodiscard]] QString stateName() const;
     [[nodiscard]] QString errorMessage() const;
     [[nodiscard]] qint64 positionMilliseconds() const noexcept;
@@ -61,6 +75,7 @@ public:
 
 signals:
     void titleChanged();
+    void nowPlayingChanged();
     void stateChanged();
     void errorMessageChanged();
     void positionChanged();
@@ -100,12 +115,17 @@ private:
     bool m_sourceIsNetwork{};
     QString m_sourceFallbackTitle;
     QString m_title{"No track selected"};
+    QString m_nowPlayingText;
+    QString m_nowPlayingArtist;
+    QString m_nowPlayingTitle;
+    QString m_nowPlayingAlbum;
     QString m_errorMessage;
     qint64 m_positionMilliseconds{};
     qint64 m_durationMilliseconds{};
     std::size_t m_lastUnderrunCount{};
     std::size_t m_reconnectAttempt{};
     bool m_reconnectScheduled{};
+    bool m_nowPlayingMetadataStale{};
 };
 
 } // namespace yaap

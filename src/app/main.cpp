@@ -69,6 +69,11 @@ int main(int argc, char* argv[])
         &player, [&player](const QUrl& url, const QString& title) {
             player.openStream(url, title);
         });
+    QObject::connect(&radioDirectory,
+        &yaap::RadioBrowserDirectoryModel::saveRequested,
+        &radio, [&radio](const yaap::RadioBrowserStation& station) {
+            radio.addDirectoryStation(station);
+        });
     auto credentialStore = yaap::CredentialStore::createPlatformStore();
     yaap::CredentialHandleBroker credentialHandles{*credentialStore};
     yaap::ProviderAccountStore providerAccounts{*credentialStore, credentialHandles};

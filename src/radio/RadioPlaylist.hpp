@@ -15,6 +15,14 @@ struct RadioStation final {
     QString name;
     QUrl streamUrl;
     QString directoryUuid;
+    QUrl homepageUrl;
+    QUrl faviconUrl;
+    QString countryCode;
+    QString language;
+    QString tags;
+    QString codec;
+    int bitrate{};
+    bool hls{};
 };
 
 struct RadioPlaylistResult final {

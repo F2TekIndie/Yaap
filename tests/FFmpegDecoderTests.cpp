@@ -105,6 +105,7 @@ TEST_CASE("FFmpeg continuously decodes a WAV file through a bounded PCM stream")
                 readyWasPublished.store(true, std::memory_order_release);
             },
             {},
+            {},
             cancellation.get_token());
     });
 
@@ -170,7 +171,7 @@ TEST_CASE("FFmpeg streaming honours cancellation before opening input")
     const yaap::FFmpegDecoder decoder;
     yaap::PcmStream stream;
     const auto result = decoder.streamFile(
-        "unused.wav", stream, {}, {}, cancellation.get_token());
+        "unused.wav", stream, {}, {}, {}, cancellation.get_token());
 
     REQUIRE(result.cancelled);
     REQUIRE_FALSE(result.succeeded());
@@ -185,7 +186,7 @@ TEST_CASE("FFmpeg streaming seeks before producing PCM")
     yaap::StreamOptions options;
     options.startPositionMilliseconds = 50;
     const yaap::FFmpegDecoder decoder;
-    const auto result = decoder.streamFile(input.path(), stream, {}, options);
+    const auto result = decoder.streamFile(input.path(), stream, {}, {}, options);
 
     INFO(result.error);
     REQUIRE(result.succeeded());
@@ -204,6 +205,7 @@ TEST_CASE("FFmpeg decodes an opted-in live radio stream", "[.live-radio]")
 
     yaap::PcmStream stream;
     std::atomic<bool> readyWasPublished{false};
+    std::atomic<bool> metadataWasPublished{false};
     std::stop_source cancellation;
     const yaap::FFmpegDecoder decoder;
     auto decodeFuture = std::async(std::launch::async, [&] {
@@ -212,6 +214,11 @@ TEST_CASE("FFmpeg decodes an opted-in live radio stream", "[.live-radio]")
         return decoder.streamUrl(radioUrl.toStdString(), stream,
             [&](const yaap::AudioStreamInfo&) {
                 readyWasPublished.store(true, std::memory_order_release);
+            },
+            [&](const yaap::NowPlayingMetadata& metadata) {
+                if (!metadata.displayText.empty()) {
+                    metadataWasPublished.store(true, std::memory_order_release);
+                }
             },
             options, cancellation.get_token());
     });
@@ -235,5 +242,6 @@ TEST_CASE("FFmpeg decodes an opted-in live radio stream", "[.live-radio]")
 
     INFO(result.error);
     REQUIRE(readyWasPublished.load(std::memory_order_acquire));
+    REQUIRE(metadataWasPublished.load(std::memory_order_acquire));
     REQUIRE(stream.producedFrameCount() >= yaap::PcmFormat::sampleRate);
 }

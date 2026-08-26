@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/PcmStream.hpp"
+#include "domain/NowPlayingMetadata.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -33,6 +34,7 @@ struct StreamOptions final {
     std::chrono::milliseconds ioTimeout{15'000};
     std::chrono::milliseconds prebufferDuration{250};
     bool reconnectNetworkStream{};
+    bool requestIcyMetadata{};
     std::string userAgent{"Yaap/0.1"};
     std::string httpHeaders;
 };
@@ -40,11 +42,13 @@ struct StreamOptions final {
 class FFmpegDecoder final {
 public:
     using ReadyCallback = std::function<void(const AudioStreamInfo&)>;
+    using MetadataCallback = std::function<void(const NowPlayingMetadata&)>;
 
     [[nodiscard]] StreamDecodeResult streamFile(
         const std::filesystem::path& path,
         PcmStream& destination,
         ReadyCallback readyCallback = {},
+        MetadataCallback metadataCallback = {},
         StreamOptions options = {},
         std::stop_token stopToken = {}) const;
 
@@ -52,6 +56,7 @@ public:
         const std::string& url,
         PcmStream& destination,
         ReadyCallback readyCallback = {},
+        MetadataCallback metadataCallback = {},
         StreamOptions options = {},
         std::stop_token stopToken = {}) const;
 
@@ -60,6 +65,7 @@ private:
         const std::string& input,
         PcmStream& destination,
         ReadyCallback readyCallback,
+        MetadataCallback metadataCallback,
         StreamOptions options,
         std::stop_token stopToken) const;
 };

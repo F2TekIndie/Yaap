@@ -1,5 +1,7 @@
 #include "radio/RadioPlaylist.hpp"
 
+#include "audio/StreamMetadata.hpp"
+
 #include <QBuffer>
 #include <QMap>
 #include <QRegularExpression>
@@ -116,18 +118,6 @@ void addStation(
     return result;
 }
 
-[[nodiscard]] std::optional<QString> icyTitle(const QByteArray& rawMetadata)
-{
-    const auto metadata = QString::fromUtf8(rawMetadata).remove(QChar::Null);
-    const QRegularExpression expression{
-        R"((?:^|;)\s*StreamTitle\s*=\s*(['"])(.*?)\1\s*(?:;|$))",
-        QRegularExpression::CaseInsensitiveOption};
-    const auto match = expression.match(metadata);
-    return match.hasMatch()
-        ? std::optional<QString>{match.captured(2).trimmed()}
-        : std::nullopt;
-}
-
 } // namespace
 
 RadioPlaylistResult RadioPlaylistParser::parse(
@@ -194,7 +184,11 @@ IcyMetadataDemuxer::Output IcyMetadataDemuxer::consume(const QByteArray& input)
             offset += count;
             m_metadataRemaining -= static_cast<std::size_t>(count);
             if (m_metadataRemaining == 0) {
-                output.streamTitle = icyTitle(m_metadata);
+                const auto parsed = StreamMetadataParser::parseIcy(
+                    {m_metadata.constData(), static_cast<std::size_t>(m_metadata.size())});
+                if (parsed) {
+                    output.streamTitle = QString::fromUtf8(parsed->displayText);
+                }
                 m_audioRemaining = m_metadataInterval;
                 m_state = State::Audio;
             }

@@ -11,7 +11,16 @@
 
 namespace yaap {
 namespace {
-constexpr auto stationsSettingsKey = "radio/stations-v1";
+constexpr auto stationsSettingsKey = "radio/stations-v2";
+constexpr auto legacyStationsSettingsKey = "radio/stations-v1";
+
+[[nodiscard]] QUrl optionalHttpUrl(const QJsonObject& object, const char* key)
+{
+    const QUrl url{object.value(key).toString()};
+    return url.isValid() && (url.scheme() == "http" || url.scheme() == "https")
+        ? url
+        : QUrl{};
+}
 }
 
 RadioController::RadioController(RadioBrowserClient* directoryClient, QObject* parent)
@@ -33,18 +42,37 @@ QVariant RadioController::data(const QModelIndex& index, const int role) const
         return {};
     }
     const auto& station = m_stations[static_cast<std::size_t>(index.row())];
-    if (role == NameRole) {
-        return station.name;
+    switch (role) {
+    case NameRole: return station.name;
+    case UrlRole: return station.streamUrl;
+    case DirectoryUuidRole: return station.directoryUuid;
+    case HomepageUrlRole: return station.homepageUrl;
+    case FaviconUrlRole: return station.faviconUrl;
+    case CountryCodeRole: return station.countryCode;
+    case LanguageRole: return station.language;
+    case TagsRole: return station.tags;
+    case CodecRole: return station.codec;
+    case BitrateRole: return station.bitrate;
+    case HlsRole: return station.hls;
+    default: return {};
     }
-    if (role == UrlRole) {
-        return station.streamUrl;
-    }
-    return {};
 }
 
 QHash<int, QByteArray> RadioController::roleNames() const
 {
-    return {{NameRole, "stationName"}, {UrlRole, "streamUrl"}};
+    return {
+        {NameRole, "stationName"},
+        {UrlRole, "streamUrl"},
+        {DirectoryUuidRole, "stationUuid"},
+        {HomepageUrlRole, "homepageUrl"},
+        {FaviconUrlRole, "faviconUrl"},
+        {CountryCodeRole, "stationCountryCode"},
+        {LanguageRole, "stationLanguage"},
+        {TagsRole, "stationTags"},
+        {CodecRole, "stationCodec"},
+        {BitrateRole, "stationBitrate"},
+        {HlsRole, "stationHls"},
+    };
 }
 
 int RadioController::count() const noexcept { return static_cast<int>(m_stations.size()); }
@@ -63,6 +91,17 @@ bool RadioController::addStation(const QString& name, const QString& streamUrl)
 bool RadioController::addDirectoryStation(
     const QString& name, const QUrl& streamUrl, const QString& stationUuid)
 {
+    RadioBrowserStation station;
+    station.name = name;
+    station.streamUrl = streamUrl;
+    station.stationUuid = stationUuid;
+    return addDirectoryStation(station);
+}
+
+bool RadioController::addDirectoryStation(const RadioBrowserStation& stationDetails)
+{
+    const auto& streamUrl = stationDetails.streamUrl;
+    const auto& stationUuid = stationDetails.stationUuid;
     if (!streamUrl.isValid()
         || (streamUrl.scheme() != "http" && streamUrl.scheme() != "https")) {
         setError("A valid HTTP(S) station URL is required.");
@@ -80,8 +119,19 @@ bool RadioController::addDirectoryStation(
 
     const auto row = static_cast<int>(m_stations.size());
     beginInsertRows({}, row, row);
-    m_stations.push_back({name.trimmed().isEmpty() ? streamUrl.host() : name.trimmed(),
-        streamUrl, stationUuid});
+    m_stations.push_back({
+        stationDetails.name.trimmed().isEmpty()
+            ? streamUrl.host() : stationDetails.name.trimmed(),
+        streamUrl,
+        stationUuid,
+        stationDetails.homepageUrl,
+        stationDetails.faviconUrl,
+        stationDetails.countryCode.trimmed(),
+        stationDetails.language.trimmed(),
+        stationDetails.tags.trimmed(),
+        stationDetails.codec.trimmed(),
+        std::max(stationDetails.bitrate, 0),
+        stationDetails.hls});
     endInsertRows();
     persist();
     emit countChanged();
@@ -142,7 +192,15 @@ void RadioController::persist()
     for (const auto& station : m_stations) {
         values.push_back(QJsonObject{{"name", station.name},
             {"url", station.streamUrl.toString(QUrl::FullyEncoded)},
-            {"radioBrowserUuid", station.directoryUuid}});
+            {"radioBrowserUuid", station.directoryUuid},
+            {"homepage", station.homepageUrl.toString(QUrl::FullyEncoded)},
+            {"favicon", station.faviconUrl.toString(QUrl::FullyEncoded)},
+            {"countryCode", station.countryCode},
+            {"language", station.language},
+            {"tags", station.tags},
+            {"codec", station.codec},
+            {"bitrate", station.bitrate},
+            {"hls", station.hls}});
     }
     m_settings.setValue(stationsSettingsKey,
         QJsonDocument{values}.toJson(QJsonDocument::Compact));
@@ -151,15 +209,31 @@ void RadioController::persist()
 
 void RadioController::load()
 {
+    const auto migratedLegacySettings = !m_settings.contains(stationsSettingsKey)
+        && m_settings.contains(legacyStationsSettingsKey);
     const auto values = QJsonDocument::fromJson(
-        m_settings.value(stationsSettingsKey).toByteArray()).array();
+        m_settings.value(migratedLegacySettings
+                ? legacyStationsSettingsKey : stationsSettingsKey).toByteArray()).array();
     for (const auto& value : values) {
         const auto object = value.toObject();
         const QUrl url{object.value("url").toString()};
         if (url.isValid() && (url.scheme() == "http" || url.scheme() == "https")) {
-            m_stations.push_back({object.value("name").toString(), url,
-                object.value("radioBrowserUuid").toString()});
+            m_stations.push_back({
+                object.value("name").toString(),
+                url,
+                object.value("radioBrowserUuid").toString(),
+                optionalHttpUrl(object, "homepage"),
+                optionalHttpUrl(object, "favicon"),
+                object.value("countryCode").toString(),
+                object.value("language").toString(),
+                object.value("tags").toString(),
+                object.value("codec").toString(),
+                std::max(object.value("bitrate").toInt(), 0),
+                object.value("hls").toBool()});
         }
+    }
+    if (migratedLegacySettings) {
+        persist();
     }
 }
 

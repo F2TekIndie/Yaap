@@ -120,6 +120,13 @@ void RadioBrowserDirectoryModel::play(const int row)
     emit playbackRequested(station.streamUrl, station.name);
 }
 
+void RadioBrowserDirectoryModel::save(const int row)
+{
+    if (row >= 0 && row < static_cast<int>(m_stations.size())) {
+        emit saveRequested(m_stations[static_cast<std::size_t>(row)]);
+    }
+}
+
 void RadioBrowserDirectoryModel::cancel()
 {
     ++m_generation;
