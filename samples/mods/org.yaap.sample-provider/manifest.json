@@ -3,6 +3,7 @@
   "id": "org.yaap.sample-provider",
   "name": "Yaap Sample Provider",
   "version": "1.0.0",
+  "publisher": {"id": "org.yaap", "name": "Yaap Project"},
   "api": {
     "minimum": "1.0",
     "maximumExclusive": "2.0"

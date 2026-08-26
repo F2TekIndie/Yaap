@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "org.example.my-provider",
+  "name": "My Provider",
+  "version": "1.0.0",
+  "publisher": {"id": "org.example", "name": "Example Publisher"},
+  "api": {"minimum": "1.0", "maximumExclusive": "2.0"},
+  "kind": ["provider"],
+  "permissions": ["provider.network:music.example"],
+  "provider": {
+    "id": "org.example.my-provider",
+    "executables": {
+      "windows-x64": "bin/windows-x64/MyProvider.exe",
+      "linux-x64": "bin/linux-x64/MyProvider",
+      "macos-x64": "bin/macos-x64/MyProvider",
+      "macos-arm64": "bin/macos-arm64/MyProvider"
+    }
+  }
+}

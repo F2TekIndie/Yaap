@@ -20,6 +20,12 @@ not turn in-process QML or a native executable into a security sandbox. Package
 digest binding, signing, and OS-level containment are tracked in the
 [post-1.0 roadmap](roadmap.md).
 
+Permission grants are stored with the package version and a deterministic
+SHA-256 of every package file. Any content change invalidates the grant. The
+optional publisher fields are displayed as declared identity only; they are
+not a cryptographic signature. Yaap has no remote catalog or automatic mod
+updates while publisher-signature verification remains unavailable.
+
 ## Manifest
 
 The schema version is `1`. Extension API compatibility uses an inclusive
@@ -45,7 +51,9 @@ package through `..` or a symbolic link.
 
 Theme mods point to a JSON document through `theme.data`. Schema 1 requires the
 seven palette values used by `Theme` and bounded `cornerRadius` and `spacing`
-metrics. Theme changes are validated completely before being applied.
+metrics. The optional data-only `background.effect` token accepts `none` or
+`waves`; the trusted host renders the effect, so a theme cannot execute code.
+Theme changes are validated completely before being applied.
 
 ## UI extensions
 

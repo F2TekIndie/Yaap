@@ -108,6 +108,14 @@
       }
     },
     {
+      "name": "windows-vs2022-debug",
+      "configurePreset": "windows-vs2022",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
       "name": "windows-release",
       "configurePreset": "windows-vs2026",
       "configuration": "Release",

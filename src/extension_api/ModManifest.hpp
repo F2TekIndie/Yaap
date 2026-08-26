@@ -35,6 +35,9 @@ struct ModManifest final {
     QString id;
     QString name;
     QString version;
+    QString contentDigest;
+    QString publisherId;
+    QString publisherName;
     ApiVersion minimumApi;
     ApiVersion maximumExclusiveApi;
     std::vector<ModKind> kinds;

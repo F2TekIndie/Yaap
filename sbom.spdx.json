@@ -1,0 +1,18 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "Yaap",
+  "documentNamespace": "https://yaap.invalid/spdx/yaap-0.1.0",
+  "creationInfo": {
+    "created": "2026-08-25T00:00:00Z",
+    "creators": ["Tool: Yaap-CMake-release-gate"]
+  },
+  "packages": [
+    {"name": "Yaap", "SPDXID": "SPDXRef-Package-Yaap", "versionInfo": "0.1.0", "downloadLocation": "NOASSERTION", "filesAnalyzed": false, "licenseConcluded": "NOASSERTION"},
+    {"name": "Qt", "SPDXID": "SPDXRef-Package-Qt", "versionInfo": ">=6.5", "downloadLocation": "https://www.qt.io/", "filesAnalyzed": false, "licenseConcluded": "NOASSERTION"},
+    {"name": "FFmpeg", "SPDXID": "SPDXRef-Package-FFmpeg", "versionInfo": "NOASSERTION", "downloadLocation": "https://ffmpeg.org/", "filesAnalyzed": false, "licenseConcluded": "NOASSERTION"},
+    {"name": "miniaudio", "SPDXID": "SPDXRef-Package-miniaudio", "versionInfo": "NOASSERTION", "downloadLocation": "https://miniaud.io/", "filesAnalyzed": false, "licenseConcluded": "MIT-0"},
+    {"name": "Catch2", "SPDXID": "SPDXRef-Package-Catch2", "versionInfo": ">=3", "downloadLocation": "https://github.com/catchorg/Catch2", "filesAnalyzed": false, "licenseConcluded": "BSL-1.0"}
+  ]
+}

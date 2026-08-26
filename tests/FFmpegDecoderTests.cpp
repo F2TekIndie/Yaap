@@ -4,6 +4,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <QtGlobal>
+#include <QString>
+
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -190,4 +193,47 @@ TEST_CASE("FFmpeg streaming seeks before producing PCM")
     REQUIRE(stream.durationMilliseconds() >= 90);
     REQUIRE(stream.durationMilliseconds() <= 110);
     REQUIRE(result.decodedFrameCount < yaap::PcmFormat::sampleRate / 10U);
+}
+
+TEST_CASE("FFmpeg decodes an opted-in live radio stream", "[.live-radio]")
+{
+    const auto radioUrl = qEnvironmentVariable("YAAP_TEST_RADIO_URL");
+    if (radioUrl.isEmpty()) {
+        SKIP("Set YAAP_TEST_RADIO_URL to run the live radio integration test.");
+    }
+
+    yaap::PcmStream stream;
+    std::atomic<bool> readyWasPublished{false};
+    std::stop_source cancellation;
+    const yaap::FFmpegDecoder decoder;
+    auto decodeFuture = std::async(std::launch::async, [&] {
+        yaap::StreamOptions options;
+        options.reconnectNetworkStream = true;
+        return decoder.streamUrl(radioUrl.toStdString(), stream,
+            [&](const yaap::AudioStreamInfo&) {
+                readyWasPublished.store(true, std::memory_order_release);
+            },
+            options, cancellation.get_token());
+    });
+
+    std::array<float, 960> output{};
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{20};
+    while (std::chrono::steady_clock::now() < deadline
+        && stream.producedFrameCount() < yaap::PcmFormat::sampleRate) {
+        if (stream.hasAudio()) {
+            stream.play();
+        }
+        [[maybe_unused]] const auto rendered = stream.render(
+            output, output.size() / yaap::PcmFormat::channels);
+        if (decodeFuture.wait_for(std::chrono::milliseconds{0}) == std::future_status::ready) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{5});
+    }
+    cancellation.request_stop();
+    const auto result = decodeFuture.get();
+
+    INFO(result.error);
+    REQUIRE(readyWasPublished.load(std::memory_order_acquire));
+    REQUIRE(stream.producedFrameCount() >= yaap::PcmFormat::sampleRate);
 }

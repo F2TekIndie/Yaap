@@ -4,6 +4,7 @@ qt_add_qml_module(
   URI Yaap.Ui
   VERSION 1.0
   QML_FILES
+    AnimatedWaveBackground.qml
     ExtensionHost.qml
     ThemedPanel.qml
 )

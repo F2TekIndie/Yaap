@@ -32,16 +32,25 @@ public:
         QString& error);
     quint64 sendRequest(const QString& method, const QJsonObject& parameters = {});
     void cancel(quint64 requestId);
+    bool sendHostResponse(
+        quint64 requestId,
+        const QJsonValue& result,
+        const QJsonObject& error = {});
     void stop();
 
     [[nodiscard]] bool isReady() const noexcept;
     [[nodiscard]] QString providerId() const;
     [[nodiscard]] QString errorMessage() const;
+    [[nodiscard]] QString diagnosticTail() const;
 
 signals:
     void readyChanged();
     void errorMessageChanged();
     void responseReceived(quint64 requestId, const QJsonValue& result, const QJsonObject& error);
+    void hostRequestReceived(
+        quint64 requestId,
+        const QString& method,
+        const QJsonObject& parameters);
     void processStopped();
 
 private:
@@ -63,10 +72,12 @@ private:
     QString m_providerId;
     QStringList m_grantedPermissions;
     QString m_errorMessage;
+    QByteArray m_diagnosticTail;
     quint64 m_nextRequestId{1};
     bool m_ready{};
     bool m_stopping{};
     QSet<quint64> m_outstandingRequests;
+    void* m_nativeContainmentHandle{};
 };
 
 } // namespace yaap

@@ -17,6 +17,9 @@ playlists, OpenSubsonic, Jellyfin, and operating-system credential storage.
   extraction, recursive folder scans, filesystem watching, and playlists.
 - M3U/M3U8, PLS, and XSPF parsing; incremental ICY metadata demuxing; bounded
   HTTP playlist loading; and capped exponential reconnect behavior.
+- Radio Browser discovery with SRV mirror failover, country-popular and
+  name-search views, click reporting, bounded responses, and 24-hour SQLite
+  cache fallback. Yaap bundles no default stations; saving is always explicit.
 - Asynchronous OpenSubsonic search/stream URL generation and Jellyfin
   authentication/library loading through Qt Network.
 - Windows Credential Manager, macOS Keychain, and Linux Secret Service
@@ -25,6 +28,12 @@ playlists, OpenSubsonic, Jellyfin, and operating-system credential storage.
   QML extension slots, explicit permission grants, and sample mod packages.
 - Length-framed, bounded local IPC plus an asynchronous C++ provider SDK and
   supervised out-of-process sample provider.
+- Federated provider search and playback resolution across external providers,
+  OpenSubsonic, and Jellyfin; secure multi-account settings; station and local
+  library browsers; bounded offline SQLite caches.
+- Digest-bound mod grants, provider request deadlines, bounded logs,
+  crash-loop suppression, Windows Job/Unix resource limits, and a standalone
+  provider/package conformance runner.
 
 ## Dependencies
 
@@ -118,10 +127,10 @@ a separate release review.
 
 ## Next steps toward the full version
 
-The versioned mod and provider foundation is implemented. The reevaluated
-[steps 8–15](docs/roadmap.md) now prioritize application-domain integration,
-accounts, package identity, and process containment before richer browsing,
-caching, ecosystem tooling, and remote distribution.
+The locally implementable work in reevaluated [steps 8–15](docs/roadmap.md) is
+now integrated. Cryptographically signed artifacts still require a real signing
+identity, and live OpenSubsonic/Jellyfin compatibility jobs require pinned test
+servers; the build exposes release gates without inventing either credential.
 
 Audio-product work remains parallel to that extension roadmap: ReplayGain,
 gapless playback, crossfade, EQ, visualizers, output selection, and OS media

@@ -14,6 +14,7 @@ namespace yaap {
 struct RadioStation final {
     QString name;
     QUrl streamUrl;
+    QString directoryUuid;
 };
 
 struct RadioPlaylistResult final {

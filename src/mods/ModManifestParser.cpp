@@ -2,7 +2,9 @@
 
 #include "extension_api/ModPermission.hpp"
 
+#include <QCryptographicHash>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -16,6 +18,58 @@ namespace yaap {
 namespace {
 
 constexpr qint64 maximumManifestBytes = 256 * 1024;
+constexpr qint64 maximumPackageBytes = 128 * 1024 * 1024;
+constexpr qsizetype maximumPackageFiles = 4'096;
+
+[[nodiscard]] QString packageDigest(const QString& packageRoot, QString& error)
+{
+    QStringList relativeFiles;
+    QDirIterator iterator{packageRoot, QDir::Files | QDir::Hidden,
+        QDirIterator::Subdirectories};
+    while (iterator.hasNext()) {
+        relativeFiles.push_back(QDir::fromNativeSeparators(
+            QDir{packageRoot}.relativeFilePath(iterator.next())));
+        if (relativeFiles.size() > maximumPackageFiles) {
+            error = "Mod package contains too many files.";
+            return {};
+        }
+    }
+    relativeFiles.sort(Qt::CaseSensitive);
+
+    const auto canonicalRoot = QDir::fromNativeSeparators(
+        QFileInfo{packageRoot}.canonicalFilePath());
+    const auto rootPrefix = canonicalRoot + '/';
+    QCryptographicHash hash{QCryptographicHash::Sha256};
+    qint64 totalBytes{};
+    for (const auto& relativePath : relativeFiles) {
+        QFile file{QDir{packageRoot}.filePath(relativePath)};
+        const auto canonicalFile = QDir::fromNativeSeparators(
+            QFileInfo{file}.canonicalFilePath());
+#ifdef _WIN32
+        constexpr auto pathCaseSensitivity = Qt::CaseInsensitive;
+#else
+        constexpr auto pathCaseSensitivity = Qt::CaseSensitive;
+#endif
+        if (!canonicalFile.startsWith(rootPrefix, pathCaseSensitivity)
+            || !file.open(QIODevice::ReadOnly)) {
+            error = "Could not safely hash package file " + relativePath + '.';
+            return {};
+        }
+        totalBytes += file.size();
+        if (totalBytes > maximumPackageBytes) {
+            error = "Mod package exceeds the 128 MiB trust-verification limit.";
+            return {};
+        }
+        hash.addData(relativePath.toUtf8());
+        hash.addData(QByteArrayView{"\0", 1});
+        hash.addData(QByteArray::number(file.size()));
+        hash.addData(QByteArrayView{"\0", 1});
+        while (!file.atEnd()) {
+            hash.addData(file.read(64 * 1024));
+        }
+    }
+    return QString::fromLatin1(hash.result().toHex());
+}
 
 [[nodiscard]] std::optional<ModKind> parseKind(const QString& value)
 {
@@ -76,6 +130,9 @@ ManifestParseResult ModManifestParser::parsePackage(const QString& packageRoot)
     manifest.id = root.value("id").toString().trimmed();
     manifest.name = root.value("name").toString().trimmed();
     manifest.version = root.value("version").toString().trimmed();
+    const auto publisher = root.value("publisher").toObject();
+    manifest.publisherId = publisher.value("id").toString().trimmed();
+    manifest.publisherName = publisher.value("name").toString().trimmed();
 
     if (manifest.schemaVersion != modManifestSchemaVersion) {
         return {.error = "Unsupported manifest schema version."};
@@ -169,6 +226,12 @@ ManifestParseResult ModManifestParser::parsePackage(const QString& packageRoot)
         if (manifest.provider.providerId.isEmpty() || !error.isEmpty()) {
             return {.error = "Invalid provider declaration: " + error};
         }
+    }
+
+    QString digestError;
+    manifest.contentDigest = packageDigest(canonicalRoot, digestError);
+    if (!digestError.isEmpty()) {
+        return {.error = std::move(digestError)};
     }
 
     return {.manifest = std::move(manifest)};

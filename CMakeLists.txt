@@ -8,6 +8,19 @@ project(
 )
 
 option(YAAP_BUILD_APP "Build the Qt Quick desktop application" ON)
+option(YAAP_ENABLE_SANITIZERS "Enable supported address/undefined sanitizers" OFF)
+option(YAAP_BUILD_FUZZERS "Build libFuzzer parser targets with Clang" OFF)
+option(YAAP_REQUIRE_SIGNING "Fail release metadata checks without a signing identity" OFF)
+set(YAAP_SIGNING_IDENTITY "" CACHE STRING "Platform signing certificate thumbprint or identity")
+
+if(YAAP_ENABLE_SANITIZERS)
+  if(MSVC)
+    add_compile_options(/fsanitize=address)
+  else()
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+  endif()
+endif()
 
 set(
   YAAP_DISTRIBUTION_ROOT
@@ -100,6 +113,16 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
   target_link_libraries(yaap_provider_protocol PUBLIC Yaap::ExtensionApi Qt6::Core)
   yaap_enable_warnings(yaap_provider_protocol)
 
+  if(YAAP_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      message(FATAL_ERROR "YAAP_BUILD_FUZZERS requires Clang or AppleClang")
+    endif()
+    add_executable(yaap_protocol_fuzzer tests/fuzz/ProviderProtocolFuzzer.cpp)
+    target_link_libraries(yaap_protocol_fuzzer PRIVATE Yaap::ProviderProtocol)
+    target_compile_options(yaap_protocol_fuzzer PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(yaap_protocol_fuzzer PRIVATE -fsanitize=fuzzer,address)
+  endif()
+
   add_library(
     yaap_mod_runtime
     src/mods/ExtensionRegistry.cpp
@@ -127,6 +150,10 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
     yaap_provider_runtime
     src/provider_runtime/ProviderExtensionManager.cpp
     src/provider_runtime/ProviderExtensionManager.hpp
+    src/provider_runtime/ProviderGateway.cpp
+    src/provider_runtime/ProviderGateway.hpp
+    src/provider_runtime/ProviderCache.cpp
+    src/provider_runtime/ProviderCache.hpp
     src/provider_runtime/ProviderProcessSupervisor.cpp
     src/provider_runtime/ProviderProcessSupervisor.hpp
   )
@@ -134,7 +161,7 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
   target_include_directories(yaap_provider_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(
     yaap_provider_runtime
-    PUBLIC Yaap::ModRuntime Yaap::ProviderProtocol Qt6::Core Qt6::Network
+    PUBLIC Yaap::ModRuntime Yaap::ProviderProtocol Qt6::Core Qt6::Network Qt6::Sql
   )
   yaap_enable_warnings(yaap_provider_runtime)
 
@@ -162,6 +189,12 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
   set_target_properties(yaap_sample_provider PROPERTIES OUTPUT_NAME "YaapSampleProvider")
   target_link_libraries(yaap_sample_provider PRIVATE Yaap::ProviderSdk)
   yaap_enable_warnings(yaap_sample_provider)
+
+  add_executable(yaap_provider_conformance tools/provider_conformance/main.cpp)
+  set_target_properties(yaap_provider_conformance PROPERTIES
+    OUTPUT_NAME "yaap-provider-conformance")
+  target_link_libraries(yaap_provider_conformance PRIVATE Yaap::ProviderRuntime)
+  yaap_enable_warnings(yaap_provider_conformance)
 
   include(CMakePackageConfigHelpers)
   write_basic_package_version_file(
@@ -192,6 +225,7 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
   install(DIRECTORY src/extension_api DESTINATION include FILES_MATCHING PATTERN "*.hpp")
   install(DIRECTORY src/provider_protocol DESTINATION include FILES_MATCHING PATTERN "*.hpp")
   install(TARGETS yaap_sample_provider RUNTIME DESTINATION share/Yaap/examples)
+  install(TARGETS yaap_provider_conformance RUNTIME DESTINATION bin)
 
   add_library(
     yaap_audio
@@ -233,12 +267,18 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
     src/library/LibraryIndexer.hpp
     src/providers/ProviderClients.cpp
     src/providers/ProviderClients.hpp
+    src/providers/ProviderAccountStore.cpp
+    src/providers/ProviderAccountStore.hpp
     src/radio/RadioPlaylist.cpp
     src/radio/RadioPlaylist.hpp
     src/radio/RadioPlaylistLoader.cpp
     src/radio/RadioPlaylistLoader.hpp
+    src/radio/RadioBrowserClient.cpp
+    src/radio/RadioBrowserClient.hpp
     src/security/CredentialStore.cpp
     src/security/CredentialStore.hpp
+    src/security/CredentialHandleBroker.cpp
+    src/security/CredentialHandleBroker.hpp
   )
   add_library(Yaap::Services ALIAS yaap_services)
   target_include_directories(yaap_services PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -261,6 +301,7 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
     find_library(YAAP_SECURITY_FRAMEWORK Security REQUIRED)
     target_link_libraries(yaap_services PRIVATE "${YAAP_SECURITY_FRAMEWORK}")
   endif()
+  target_link_libraries(yaap_provider_runtime PUBLIC Yaap::Services)
 endif()
 
 if(YAAP_BUILD_APP)
@@ -283,6 +324,10 @@ if(YAAP_BUILD_APP)
     src/app/LibraryController.hpp
     src/app/PlayerController.cpp
     src/app/PlayerController.hpp
+    src/app/RadioController.cpp
+    src/app/RadioController.hpp
+    src/app/RadioBrowserDirectoryModel.cpp
+    src/app/RadioBrowserDirectoryModel.hpp
   )
 
   qt_add_qml_module(
@@ -341,9 +386,9 @@ if(YAAP_BUILD_APP)
       )
     endif()
 
-    # PROTOTYPE: This produces a directly runnable development distribution.
-    # Replace it with install rules plus CPack, signing, and clean-machine
-    # release validation when the product packaging pipeline is introduced.
+    # PROTOTYPE: Keep this convenient post-build development layout until all
+    # local workflows consume the install/CPack layout below; signed releases
+    # should be produced only by the release pipeline.
     add_custom_command(
       TARGET yaap_app
       POST_BUILD
@@ -368,13 +413,70 @@ if(YAAP_BUILD_APP)
     BUNDLE DESTINATION .
     RUNTIME DESTINATION bin
   )
+  if(WIN32)
+    # vcpkg places FFmpeg and its transitive runtime DLLs beside the linked app.
+    install(DIRECTORY "$<TARGET_FILE_DIR:yaap_app>/"
+      DESTINATION bin FILES_MATCHING PATTERN "*.dll")
+  endif()
+  qt_generate_deploy_qml_app_script(
+    TARGET yaap_app
+    OUTPUT_SCRIPT YAAP_QT_DEPLOY_SCRIPT
+    NO_UNSUPPORTED_PLATFORM_ERROR
+  )
+  install(SCRIPT "${YAAP_QT_DEPLOY_SCRIPT}")
 endif()
+
+install(DIRECTORY samples/mods/ DESTINATION bin/mods)
+if(WIN32)
+  install(TARGETS yaap_sample_provider
+    RUNTIME DESTINATION bin/mods/org.yaap.sample-provider/bin/windows-x64)
+elseif(APPLE)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    set(_yaap_provider_platform macos-arm64)
+  else()
+    set(_yaap_provider_platform macos-x64)
+  endif()
+  install(TARGETS yaap_sample_provider
+    RUNTIME DESTINATION "bin/mods/org.yaap.sample-provider/bin/${_yaap_provider_platform}")
+else()
+  install(TARGETS yaap_sample_provider
+    RUNTIME DESTINATION bin/mods/org.yaap.sample-provider/bin/linux-x64)
+endif()
+install(DIRECTORY docs/ DESTINATION share/Yaap/docs)
+install(DIRECTORY sdk/schemas sdk/templates DESTINATION share/Yaap/sdk)
+install(FILES THIRD_PARTY_NOTICES.md sbom.spdx.json DESTINATION share/Yaap)
+
+add_custom_target(
+  yaap_release_gate
+  COMMAND "${CMAKE_COMMAND}"
+    "-DYAAP_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+    "-DYAAP_REQUIRE_SIGNING=${YAAP_REQUIRE_SIGNING}"
+    "-DYAAP_SIGNING_IDENTITY=${YAAP_SIGNING_IDENTITY}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyRelease.cmake"
+  VERBATIM
+)
+
+set(CPACK_PACKAGE_VENDOR "Yaap")
+set(CPACK_PACKAGE_NAME "Yaap")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_FILE_NAME "Yaap-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md")
+if(WIN32)
+  set(CPACK_GENERATOR "ZIP" CACHE STRING "CPack package generators")
+elseif(APPLE)
+  set(CPACK_GENERATOR "DragNDrop" CACHE STRING "CPack package generators")
+else()
+  set(CPACK_GENERATOR "TGZ" CACHE STRING "CPack package generators")
+endif()
+include(CPack)
 
 if(BUILD_TESTING)
   find_package(Catch2 3 CONFIG REQUIRED)
 
   add_executable(
     yaap_tests
+    src/app/PlayerController.cpp
+    src/app/PlayerController.hpp
     tests/TestMain.cpp
     tests/FFmpegDecoderTests.cpp
     tests/DomainModelTests.cpp
@@ -384,7 +486,9 @@ if(BUILD_TESTING)
     tests/ModRuntimeTests.cpp
     tests/PcmStreamTests.cpp
     tests/PlaybackStateTests.cpp
+    tests/PlayerControllerTests.cpp
     tests/ProviderClientTests.cpp
+    tests/ProviderPlatformTests.cpp
     tests/ProviderProtocolTests.cpp
     tests/RadioTests.cpp
   )
@@ -408,6 +512,18 @@ if(BUILD_TESTING)
   yaap_enable_warnings(yaap_tests)
 
   include(Catch)
+  add_test(
+    NAME "Provider SDK standalone conformance runner"
+    COMMAND yaap_provider_conformance
+      --executable $<TARGET_FILE:yaap_sample_provider>
+      --provider-id org.yaap.sample-provider
+  )
+  set_tests_properties(
+    "Provider SDK standalone conformance runner"
+    PROPERTIES
+      ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+  )
   catch_discover_tests(
     yaap_tests
     DISCOVERY_MODE PRE_TEST

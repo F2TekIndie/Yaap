@@ -49,12 +49,14 @@ public:
     Q_INVOKABLE void removeFolder(const QUrl& folder);
     Q_INVOKABLE void rescan();
     Q_INVOKABLE qint64 createPlaylist(const QString& name);
+    Q_INVOKABLE void play(int row);
 
 signals:
     void tracksChanged();
     void scanningChanged();
     void foldersChanged();
     void errorMessageChanged();
+    void playbackRequested(const QUrl& url, const QString& title);
 
 private:
     void reload();

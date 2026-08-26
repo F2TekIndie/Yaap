@@ -12,5 +12,8 @@
   "metrics": {
     "cornerRadius": 10,
     "spacing": 14
+  },
+  "background": {
+    "effect": "waves"
   }
 }

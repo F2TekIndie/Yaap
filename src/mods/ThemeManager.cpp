@@ -80,6 +80,7 @@ QColor ThemeManager::accent() const { return m_current.accent; }
 QColor ThemeManager::error() const { return m_current.error; }
 int ThemeManager::cornerRadius() const noexcept { return m_current.cornerRadius; }
 int ThemeManager::spacing() const noexcept { return m_current.spacing; }
+QString ThemeManager::backgroundEffect() const { return m_current.backgroundEffect; }
 
 bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& error)
 {
@@ -118,6 +119,14 @@ bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& 
     }
     data.cornerRadius = cornerRadius;
     data.spacing = spacing;
+
+    const auto background = root.value("background").toObject();
+    const auto backgroundEffect = background.value("effect").toString("none");
+    if (backgroundEffect != "none" && backgroundEffect != "waves") {
+        error = "Theme background effect is not supported.";
+        return false;
+    }
+    data.backgroundEffect = backgroundEffect;
     return true;
 }
 

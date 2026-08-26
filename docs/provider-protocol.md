@@ -40,6 +40,16 @@ Protocol 1 methods are `provider.describe`, `provider.testConnection`,
 `provider.shutdown`. Unknown methods must return a typed error. Unknown optional
 object fields must be ignored.
 
+Providers with `provider.account.read` may receive a short-lived, provider- and
+account-scoped credential handle in a host request. They redeem it once through
+`host.credential.read`; the host rejects expired, reused, cross-account, or
+cross-provider handles. The returned `secretBase64` exists only in local IPC
+memory and must be decoded into short-lived mutable storage and cleared after
+use. Handles and secrets must never be logged or cached.
+
+The host applies a 20-second request deadline, bounds diagnostic output to a
+64-KiB tail, and suppresses crash loops after three failures in 60 seconds.
+
 ## C++ SDK
 
 Link `Yaap::ProviderSdk` from the installed `YaapProviderSdk` CMake

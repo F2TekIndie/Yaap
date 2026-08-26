@@ -10,6 +10,7 @@ enum class TrackKind {
     InternetRadio,
     OpenSubsonic,
     Jellyfin,
+    ExternalProvider,
 };
 
 struct Track final {

@@ -31,6 +31,8 @@ public:
         IsThemeRole,
         IsUiExtensionRole,
         IsProviderRole,
+        ContentDigestRole,
+        PublisherRole,
     };
     Q_ENUM(Role)
 

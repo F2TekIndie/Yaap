@@ -6,6 +6,24 @@ and the asynchronous C++ provider SDK. The remaining work is reordered below
 using what the implementation exposed about the actual trust and lifecycle
 boundaries.
 
+## Implementation status
+
+| Step | Status | Delivered boundary |
+|---|---|---|
+| 8 | Implemented | Federated gateway, stale-generation cancellation, DTO mapping, sample-provider playback |
+| 9 | Implemented | Multi-account model, platform credential storage, connection tests, scoped one-shot handles |
+| 10 | Implemented locally | Version/content-digest grant binding and declared publisher metadata; cryptographic publisher verification remains required before remote distribution |
+| 11 | Implemented where locally enforceable | Deadlines, bounded logs, crash-loop suppression, Windows Job restrictions, Unix resource limits; native-code network allow-list enforcement needs a stronger OS sandbox |
+| 12 | Implemented | Host-owned provider search, account, local-library, and radio collection views |
+| 13 | Implemented | Namespaced SQLite cache, TTL/stale state, offline mode, 64-MiB LRU pruning, account cleanup |
+| 14 | Implemented locally | Standalone conformance runner, contract tests, libFuzzer target, sanitizer option, Windows/Linux/macOS CI; live server matrix needs pinned server fixtures |
+| 15 | Implemented locally | Frozen codes/schemas, compatibility policy, SDK template, install/CPack rules, SBOM/notices, clean-runner package jobs; signing/notarization needs real identities |
+
+The repository intentionally contains no remote mod catalog or automatic update
+path until cryptographic publisher verification is implemented. The release
+gate fails when signing is required without an identity; it cannot manufacture
+a trusted certificate or notarization credential.
+
 ## 8. Connect providers to the application domain
 
 Add a host-side provider gateway that maps protocol DTOs into `Track`,
@@ -86,4 +104,3 @@ automatic mod distribution until steps 10, 11, and 14 are complete.
 
 **Exit:** API 1.x has reproducible artifacts, compatibility policy, examples,
 and release gates suitable for third-party development.
-

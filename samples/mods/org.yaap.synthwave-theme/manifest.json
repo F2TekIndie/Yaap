@@ -3,6 +3,7 @@
   "id": "org.yaap.synthwave-theme",
   "name": "Yaap Synthwave",
   "version": "1.0.0",
+  "publisher": {"id": "org.yaap", "name": "Yaap Project"},
   "api": {
     "minimum": "1.0",
     "maximumExclusive": "2.0"

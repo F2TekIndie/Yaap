@@ -122,6 +122,16 @@ qint64 LibraryController::createPlaylist(const QString& name)
     return id;
 }
 
+void LibraryController::play(const int row)
+{
+    if (row < 0 || row >= static_cast<int>(m_tracks.size())) {
+        return;
+    }
+    const auto& track = m_tracks[static_cast<std::size_t>(row)];
+    emit playbackRequested(QUrl::fromLocalFile(QString::fromStdString(track.source)),
+        QString::fromStdString(track.title));
+}
+
 void LibraryController::reload()
 {
     QString error;

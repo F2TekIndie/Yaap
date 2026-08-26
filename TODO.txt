@@ -1,7 +1,0 @@
-Provider-domain gateway, account settings, credential handles, and cancellation-safe UI integration.
-Package digest/signing identity and provider process containment before remote distribution.
-Station/server browsers, federated search, pagination, bounded caches, and offline behavior.
-Provider conformance runner and live OpenSubsonic/Jellyfin compatibility matrix.
-ReplayGain, gapless playback, crossfade, EQ, output selection, visualizers, and OS media controls.
-Linux/macOS CI, sanitizers, parser fuzzing, accessibility, localization, and crash recovery.
-Installers, signing/notarization, SBOM, license notices, updates, and clean-machine release testing.

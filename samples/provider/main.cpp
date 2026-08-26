@@ -3,11 +3,55 @@
 #include "sdk/cpp/ProviderService.hpp"
 
 #include <QCoreApplication>
+#include <QDataStream>
+#include <QDir>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QStandardPaths>
 #include <QTimer>
+#include <QUrl>
+
+#include <cmath>
 
 namespace {
+
+[[nodiscard]] QUrl sampleToneUrl()
+{
+    constexpr quint32 sampleRate = 48'000;
+    constexpr quint16 channels = 2;
+    constexpr quint16 bitsPerSample = 16;
+    constexpr quint32 frames = sampleRate * 3;
+    constexpr quint32 dataBytes = frames * channels * (bitsPerSample / 8);
+    const auto directory = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+        + "/YaapSampleProvider";
+    QDir{}.mkpath(directory);
+    const auto path = directory + "/sample-tone.wav";
+    if (QFileInfo{path}.size() == static_cast<qint64>(44 + dataBytes)) {
+        return QUrl::fromLocalFile(path);
+    }
+    QFile file{path};
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return {};
+    }
+    QDataStream stream{&file};
+    stream.setByteOrder(QDataStream::LittleEndian);
+    stream.writeRawData("RIFF", 4);
+    stream << quint32{36 + dataBytes};
+    stream.writeRawData("WAVEfmt ", 8);
+    stream << quint32{16} << quint16{1} << channels << sampleRate
+           << quint32{sampleRate * channels * (bitsPerSample / 8)}
+           << quint16{channels * (bitsPerSample / 8)} << bitsPerSample;
+    stream.writeRawData("data", 4);
+    stream << dataBytes;
+    for (quint32 frame = 0; frame < frames; ++frame) {
+        const auto phase = 2.0 * 3.14159265358979323846 * 440.0
+            * static_cast<double>(frame) / sampleRate;
+        const auto sample = static_cast<qint16>(std::sin(phase) * 5'000.0);
+        stream << sample << sample;
+    }
+    return QUrl::fromLocalFile(path);
+}
 
 class SampleProvider final : public yaap::sdk::ProviderService {
 public:
@@ -42,7 +86,7 @@ public:
             return;
         }
         if (method == yaap::provider_protocol::resolvePlayback) {
-            completion(QJsonObject{{"url", "https://example.invalid/sample.mp3"},
+            completion(QJsonObject{{"url", sampleToneUrl().toString(QUrl::FullyEncoded)},
                 {"expiresAt", QJsonValue::Null}}, {});
             return;
         }

@@ -71,9 +71,11 @@ TEST_CASE("Theme activation is atomic and extension activation requires permissi
       "schemaVersion":1,
       "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
         "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
-      "metrics":{"cornerRadius":5,"spacing":9}
+      "metrics":{"cornerRadius":5,"spacing":9},
+      "background":{"effect":"waves"}
     })json");
     ModManifest theme{.id = "org.example.theme", .name = "Theme", .version = "1.0",
+        .contentDigest = "test-theme-digest",
         .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
         .theme = {.dataPath = directory.filePath("theme.json")}};
     ThemeManager themes;
@@ -81,10 +83,12 @@ TEST_CASE("Theme activation is atomic and extension activation requires permissi
     REQUIRE(themes.registerTheme(theme, error));
     REQUIRE(themes.selectTheme(theme.id, error));
     CHECK(themes.accent() == QColor{"#00ffff"});
+    CHECK(themes.backgroundEffect() == "waves");
 
     PermissionStore permissions;
     ExtensionRegistry extensions{permissions};
     ModManifest ui{.id = "org.example.ui", .name = "UI", .version = "1.0",
+        .contentDigest = "test-ui-digest",
         .kinds = {ModKind::UiExtension},
         .permissions = {"ui.extend:nowPlaying.aboveTransport"},
         .uiExtensions = {{"nowPlaying.aboveTransport", directory.filePath("Badge.qml"), 0}}};
@@ -115,7 +119,29 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
         INFO(error.toStdString());
         REQUIRE(themes.selectTheme(parsed.manifest.id, error));
         CHECK(themes.currentThemeId() == parsed.manifest.id);
+        CHECK(themes.backgroundEffect() == (package == "org.yaap.ocean-theme" ? "waves" : "none"));
     }
+}
+
+TEST_CASE("Theme background effects are restricted to host-owned renderers")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9},
+      "background":{"effect":"arbitrary-qml"}
+    })json");
+    ModManifest theme{.id = "org.example.invalid-effect", .name = "Invalid", .version = "1.0",
+        .contentDigest = "invalid-effect-digest",
+        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .theme = {.dataPath = directory.filePath("theme.json")}};
+
+    ThemeManager themes;
+    QString error;
+    CHECK_FALSE(themes.registerTheme(theme, error));
+    CHECK(error.contains("not supported"));
 }
 
 TEST_CASE("Mod manager can grant enable and select a bundled theme")
@@ -131,6 +157,39 @@ TEST_CASE("Mod manager can grant enable and select a bundled theme")
     REQUIRE(mods.activateTheme(themeId));
     CHECK(themes.currentThemeId() == themeId);
     CHECK(themes.windowTop() == QColor{"#f8f1e4"});
+}
+
+TEST_CASE("Changing package content invalidates its permission grant")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9}
+    })json");
+    writeFile(directory.filePath("manifest.json"), R"json({
+      "schemaVersion":1,"id":"org.example.digest-theme","name":"Digest","version":"1.0.0",
+      "api":{"minimum":"1.0","maximumExclusive":"2.0"},"kind":["theme"],
+      "permissions":["theme.install"],"theme":{"data":"theme.json"}
+    })json");
+    const auto original = ModManifestParser::parsePackage(directory.path());
+    REQUIRE(original.succeeded());
+    PermissionStore permissions;
+    QString error;
+    REQUIRE(permissions.grantDeclared(original.manifest, error));
+    REQUIRE(permissions.hasAllDeclared(original.manifest));
+
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#222222","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9}
+    })json");
+    const auto changed = ModManifestParser::parsePackage(directory.path());
+    REQUIRE(changed.succeeded());
+    CHECK(changed.manifest.contentDigest != original.manifest.contentDigest);
+    CHECK_FALSE(permissions.hasAllDeclared(changed.manifest));
 }
 
 } // namespace yaap

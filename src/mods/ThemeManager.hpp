@@ -21,6 +21,7 @@ class ThemeManager final : public QObject {
     Q_PROPERTY(QColor error READ error NOTIFY themeChanged)
     Q_PROPERTY(int cornerRadius READ cornerRadius NOTIFY themeChanged)
     Q_PROPERTY(int spacing READ spacing NOTIFY themeChanged)
+    Q_PROPERTY(QString backgroundEffect READ backgroundEffect NOTIFY themeChanged)
 
 public:
     explicit ThemeManager(QObject* parent = nullptr);
@@ -39,6 +40,7 @@ public:
     [[nodiscard]] QColor error() const;
     [[nodiscard]] int cornerRadius() const noexcept;
     [[nodiscard]] int spacing() const noexcept;
+    [[nodiscard]] QString backgroundEffect() const;
 
 signals:
     void themeChanged();
@@ -54,6 +56,7 @@ private:
         QColor error{"#ff8a80"};
         int cornerRadius{8};
         int spacing{12};
+        QString backgroundEffect{"none"};
     };
 
     static bool readThemeFile(const QString& path, ThemeData& data, QString& error);

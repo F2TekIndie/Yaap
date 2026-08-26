@@ -12,7 +12,28 @@
 
 #include <utility>
 
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <sys/resource.h>
+#endif
+
 namespace yaap {
+namespace {
+constexpr int requestTimeoutMilliseconds = 20'000;
+constexpr qsizetype maximumDiagnosticBytes = 64 * 1024;
+
+void appendDiagnostic(QByteArray& destination, QByteArray data)
+{
+    if (data.size() > maximumDiagnosticBytes) {
+        data = data.last(maximumDiagnosticBytes);
+    }
+    destination += data;
+    if (destination.size() > maximumDiagnosticBytes) {
+        destination = destination.last(maximumDiagnosticBytes);
+    }
+}
+} // namespace
 
 ProviderProcessSupervisor::ProviderProcessSupervisor(QObject* parent)
     : QObject(parent)
@@ -39,11 +60,58 @@ ProviderProcessSupervisor::ProviderProcessSupervisor(QObject* parent)
                 QLocalServer::removeServer(m_serverName);
             }
             m_outstandingRequests.clear();
+#ifdef _WIN32
+            if (m_nativeContainmentHandle != nullptr) {
+                CloseHandle(static_cast<HANDLE>(m_nativeContainmentHandle));
+                m_nativeContainmentHandle = nullptr;
+            }
+#endif
             if (wasReady) {
                 emit readyChanged();
             }
             emit processStopped();
         });
+    connect(&m_process, &QProcess::readyReadStandardOutput,
+        &m_process, [this] {
+            appendDiagnostic(m_diagnosticTail, m_process.readAllStandardOutput());
+        });
+    connect(&m_process, &QProcess::readyReadStandardError,
+        &m_process, [this] {
+            appendDiagnostic(m_diagnosticTail, m_process.readAllStandardError());
+        });
+#ifdef _WIN32
+    connect(&m_process, &QProcess::started, this, [this] {
+        auto* job = CreateJobObjectW(nullptr, nullptr);
+        if (job == nullptr) {
+            appendDiagnostic(m_diagnosticTail, "Host could not create a provider job object.\n");
+            return;
+        }
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            | JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+        limits.ProcessMemoryLimit = 512ULL * 1024ULL * 1024ULL;
+        JOBOBJECT_BASIC_UI_RESTRICTIONS ui{};
+        ui.UIRestrictionsClass = JOB_OBJECT_UILIMIT_EXITWINDOWS
+            | JOB_OBJECT_UILIMIT_HANDLES | JOB_OBJECT_UILIMIT_READCLIPBOARD
+            | JOB_OBJECT_UILIMIT_WRITECLIPBOARD | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS;
+        auto* process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE,
+            FALSE, static_cast<DWORD>(m_process.processId()));
+        const auto applied = SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                &limits, sizeof(limits))
+            && SetInformationJobObject(job, JobObjectBasicUIRestrictions, &ui, sizeof(ui))
+            && process != nullptr && AssignProcessToJobObject(job, process);
+        if (process != nullptr) {
+            CloseHandle(process);
+        }
+        if (!applied) {
+            appendDiagnostic(m_diagnosticTail,
+                "Host could not apply all provider job restrictions.\n");
+            CloseHandle(job);
+            return;
+        }
+        m_nativeContainmentHandle = job;
+    });
+#endif
 }
 
 ProviderProcessSupervisor::~ProviderProcessSupervisor()
@@ -62,6 +130,12 @@ ProviderProcessSupervisor::~ProviderProcessSupervisor()
             m_process.waitForFinished(500);
         }
     }
+#ifdef _WIN32
+    if (m_nativeContainmentHandle != nullptr) {
+        CloseHandle(static_cast<HANDLE>(m_nativeContainmentHandle));
+        m_nativeContainmentHandle = nullptr;
+    }
+#endif
 }
 
 bool ProviderProcessSupervisor::start(
@@ -85,6 +159,7 @@ bool ProviderProcessSupervisor::start(
     m_stopping = false;
     m_ready = false;
     m_errorMessage.clear();
+    m_diagnosticTail.clear();
     m_expectedProviderId = expectedProviderId;
     m_grantedPermissions = grantedPermissions;
     m_nonce = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -111,12 +186,19 @@ bool ProviderProcessSupervisor::start(
         + environment.value("LD_LIBRARY_PATH"));
 #endif
     m_process.setProcessEnvironment(environment);
-    // PROTOTYPE: Drain child output so it cannot fill OS pipes. Structured,
-    // quota-limited provider logs belong in the process-hardening milestone.
-    connect(&m_process, &QProcess::readyReadStandardOutput,
-        &m_process, [this] { m_process.readAllStandardOutput(); });
-    connect(&m_process, &QProcess::readyReadStandardError,
-        &m_process, [this] { m_process.readAllStandardError(); });
+#ifndef _WIN32
+    m_process.setChildProcessModifier([] {
+        const rlimit noCore{0, 0};
+        setrlimit(RLIMIT_CORE, &noCore);
+        const rlimit fileLimit{256, 256};
+        setrlimit(RLIMIT_NOFILE, &fileLimit);
+#ifdef RLIMIT_AS
+        const rlimit addressSpace{1024ULL * 1024ULL * 1024ULL,
+            1024ULL * 1024ULL * 1024ULL};
+        setrlimit(RLIMIT_AS, &addressSpace);
+#endif
+    });
+#endif
     m_process.start();
     m_startupTimer.start();
     return true;
@@ -137,16 +219,40 @@ quint64 ProviderProcessSupervisor::sendRequest(
         return 0;
     }
     m_outstandingRequests.insert(requestId);
+    QTimer::singleShot(requestTimeoutMilliseconds, this, [this, requestId] {
+        if (!m_outstandingRequests.remove(requestId)) {
+            return;
+        }
+        emit responseReceived(requestId, {},
+            QJsonObject{{"code", provider_protocol::error_code::timeout},
+                {"message", "Provider request timed out."}});
+        fail("Provider became unresponsive and was stopped.");
+        stop();
+    });
     return requestId;
 }
 
 void ProviderProcessSupervisor::cancel(const quint64 requestId)
 {
-    if (m_ready && requestId != 0) {
-        sendMessage({{"type", "request"}, {"protocol", providerProtocolVersion},
-            {"id", QString::number(m_nextRequestId++)}, {"method", provider_protocol::cancel},
-            {"params", QJsonObject{{"requestId", QString::number(requestId)}}}});
+    if (m_ready && requestId != 0 && m_outstandingRequests.remove(requestId)) {
+        sendRequest(provider_protocol::cancel,
+            QJsonObject{{"requestId", QString::number(requestId)}});
     }
+}
+
+bool ProviderProcessSupervisor::sendHostResponse(
+    const quint64 requestId,
+    const QJsonValue& result,
+    const QJsonObject& error)
+{
+    QJsonObject message{{"type", "response"}, {"protocol", providerProtocolVersion},
+        {"id", QString::number(requestId)}};
+    if (error.isEmpty()) {
+        message.insert("result", result);
+    } else {
+        message.insert("error", error);
+    }
+    return sendMessage(message);
 }
 
 void ProviderProcessSupervisor::stop()
@@ -175,6 +281,10 @@ void ProviderProcessSupervisor::stop()
 bool ProviderProcessSupervisor::isReady() const noexcept { return m_ready; }
 QString ProviderProcessSupervisor::providerId() const { return m_providerId; }
 QString ProviderProcessSupervisor::errorMessage() const { return m_errorMessage; }
+QString ProviderProcessSupervisor::diagnosticTail() const
+{
+    return QString::fromUtf8(m_diagnosticTail);
+}
 
 void ProviderProcessSupervisor::acceptConnection()
 {
@@ -193,6 +303,7 @@ void ProviderProcessSupervisor::acceptConnection()
     connect(candidate, &QLocalSocket::disconnected, this, [this] {
         if (!m_stopping) {
             fail("Provider IPC connection closed unexpectedly.");
+            stop();
         }
         cleanupSocket();
     });
@@ -238,6 +349,17 @@ void ProviderProcessSupervisor::handleMessage(const QJsonObject& message)
             {"extensionApi", extensionApiVersion.toString()},
             {"permissions", QJsonArray::fromStringList(m_grantedPermissions)}});
         emit readyChanged();
+        return;
+    }
+    if (type == "request") {
+        bool idOk{};
+        const auto requestId = message.value("id").toString().toULongLong(&idOk);
+        const auto method = message.value("method").toString();
+        if (!idOk || requestId == 0 || method.isEmpty()) {
+            fail("Provider sent an invalid host request.");
+            return;
+        }
+        emit hostRequestReceived(requestId, method, message.value("params").toObject());
         return;
     }
     if (type != "response") {

@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "id": "org.yaap.ocean-theme",
   "name": "Yaap Ocean",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "publisher": {"id": "org.yaap", "name": "Yaap Project"},
   "api": {
     "minimum": "1.0",
     "maximumExclusive": "2.0"

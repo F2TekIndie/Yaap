@@ -56,6 +56,9 @@ QVariant ModManager::data(const QModelIndex& index, const int role) const
     case IsThemeRole: return entry.manifest.hasKind(ModKind::Theme);
     case IsUiExtensionRole: return entry.manifest.hasKind(ModKind::UiExtension);
     case IsProviderRole: return entry.manifest.hasKind(ModKind::Provider);
+    case ContentDigestRole: return entry.manifest.contentDigest;
+    case PublisherRole: return entry.manifest.publisherName.isEmpty()
+        ? QStringLiteral("Unverified publisher") : entry.manifest.publisherName;
     default: return {};
     }
 }
@@ -66,7 +69,8 @@ QHash<int, QByteArray> ModManager::roleNames() const
         {KindsRole, "kinds"}, {PermissionsRole, "permissions"},
         {EnabledRole, "modEnabled"}, {PermissionsGrantedRole, "permissionsGranted"},
         {DiagnosticRole, "diagnostic"}, {IsThemeRole, "isTheme"},
-        {IsUiExtensionRole, "isUiExtension"}, {IsProviderRole, "isProvider"}};
+        {IsUiExtensionRole, "isUiExtension"}, {IsProviderRole, "isProvider"},
+        {ContentDigestRole, "contentDigest"}, {PublisherRole, "publisher"}};
 }
 
 QString ModManager::errorMessage() const

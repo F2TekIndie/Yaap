@@ -38,6 +38,25 @@ bool ProviderApplication::start(const QStringList& arguments, QString& error)
     return true;
 }
 
+quint64 ProviderApplication::requestHost(
+    const QString& method,
+    const QJsonObject& parameters,
+    HostCompletion completion)
+{
+    constexpr qsizetype maximumOutstandingRequests = 128;
+    if (!m_hostAccepted || method.isEmpty() || !completion
+        || m_hostRequests.size() >= maximumOutstandingRequests) {
+        return 0;
+    }
+    const auto requestId = m_nextHostRequestId++;
+    if (!send({{"type", "request"}, {"protocol", providerProtocolVersion},
+            {"id", QString::number(requestId)}, {"method", method}, {"params", parameters}})) {
+        return 0;
+    }
+    m_hostRequests.insert(requestId, std::move(completion));
+    return requestId;
+}
+
 void ProviderApplication::connected()
 {
     send({{"type", provider_protocol::providerHello},
@@ -73,6 +92,23 @@ void ProviderApplication::handleMessage(const QJsonObject& message)
             return;
         }
         m_hostAccepted = true;
+        return;
+    }
+    if (type == "response") {
+        bool idOk{};
+        const auto requestId = message.value("id").toString().toULongLong(&idOk);
+        if (!idOk || requestId == 0) {
+            emit fatalError("Host response contains an invalid request ID.");
+            return;
+        }
+        const auto iterator = m_hostRequests.find(requestId);
+        if (iterator == m_hostRequests.end()) {
+            emit fatalError("Host response refers to an unknown request.");
+            return;
+        }
+        auto completion = std::move(iterator.value());
+        m_hostRequests.erase(iterator);
+        completion(message.value("result"), message.value("error").toObject());
         return;
     }
     if (type != "request") {
@@ -136,7 +172,8 @@ void ProviderApplication::respond(
     if (error.isEmpty()) {
         message.insert("result", result);
     } else {
-        message.insert("error", QJsonObject{{"code", "provider_error"}, {"message", error}});
+        message.insert("error", QJsonObject{{"code", provider_protocol::error_code::providerError},
+            {"message", error}});
     }
     send(message);
 }

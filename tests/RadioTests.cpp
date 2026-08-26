@@ -1,4 +1,5 @@
 #include "radio/RadioPlaylist.hpp"
+#include "radio/RadioBrowserClient.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -46,6 +47,49 @@ TEST_CASE("Reconnect policy applies capped exponential backoff")
     CHECK(policy.delayForAttempt(0) == std::chrono::milliseconds{500});
     CHECK(policy.delayForAttempt(2) == std::chrono::milliseconds{2'000});
     CHECK(policy.delayForAttempt(10) == std::chrono::milliseconds{2'000});
+}
+
+TEST_CASE("Radio Browser responses map bounded playable station metadata")
+{
+    const auto result = RadioBrowserParser::parseStations(R"json([
+      {
+        "stationuuid":"9617a958-0601-11e8-ae97-52543be04c81",
+        "name":" Example Radio ",
+        "url":"http://radio.example/playlist.m3u",
+        "url_resolved":"https://radio.example/live",
+        "homepage":"https://radio.example",
+        "favicon":"javascript:alert(1)",
+        "countrycode":"de",
+        "language":"German",
+        "tags":"jazz,public radio",
+        "codec":"MP3",
+        "bitrate":192,
+        "hls":0
+      },
+      {
+        "stationuuid":"not a uuid",
+        "name":"Rejected",
+        "url_resolved":"file:///private/audio"
+      }
+    ])json");
+
+    REQUIRE(result.succeeded());
+    REQUIRE(result.stations.size() == 1);
+    const auto& station = result.stations.front();
+    CHECK(station.name == "Example Radio");
+    CHECK(station.streamUrl == QUrl{"https://radio.example/live"});
+    CHECK(station.faviconUrl.isEmpty());
+    CHECK(station.countryCode == "DE");
+    CHECK(station.codec == "MP3");
+    CHECK(station.bitrate == 192);
+    CHECK_FALSE(station.hls);
+}
+
+TEST_CASE("Radio Browser parser rejects malformed and oversized responses")
+{
+    CHECK_FALSE(RadioBrowserParser::parseStations("not-json").succeeded());
+    CHECK_FALSE(RadioBrowserParser::parseStations(
+        QByteArray{2 * 1024 * 1024 + 1, 'x'}).succeeded());
 }
 
 } // namespace yaap
