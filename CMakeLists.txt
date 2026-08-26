@@ -230,6 +230,8 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
 
   add_library(
     yaap_audio
+    src/audio/AudioAnalysisEngine.cpp
+    src/audio/AudioAnalysisEngine.hpp
     src/audio/FFmpegDecoder.cpp
     src/audio/FFmpegDecoder.hpp
     src/audio/MediaMetadata.cpp
@@ -323,6 +325,8 @@ if(YAAP_BUILD_APP)
   qt_add_executable(
     yaap_app
     src/app/main.cpp
+    src/app/AudioVisualizationModel.cpp
+    src/app/AudioVisualizationModel.hpp
     src/app/LibraryController.cpp
     src/app/LibraryController.hpp
     src/app/PlayerController.cpp
@@ -478,11 +482,14 @@ if(BUILD_TESTING)
 
   add_executable(
     yaap_tests
+    src/app/AudioVisualizationModel.cpp
+    src/app/AudioVisualizationModel.hpp
     src/app/PlayerController.cpp
     src/app/PlayerController.hpp
     src/app/RadioController.cpp
     src/app/RadioController.hpp
     tests/TestMain.cpp
+    tests/AudioAnalysisTests.cpp
     tests/FFmpegDecoderTests.cpp
     tests/DomainModelTests.cpp
     tests/ExtensionApiTests.cpp

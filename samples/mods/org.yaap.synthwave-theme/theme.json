@@ -12,5 +12,18 @@
   "metrics": {
     "cornerRadius": 16,
     "spacing": 14
+  },
+  "background": {
+    "effect": "spectrum",
+    "parameters": {
+      "columns": 48,
+      "mirror": true,
+      "opacity": 0.32,
+      "attackMilliseconds": 45,
+      "releaseMilliseconds": 260,
+      "gradientStart": "#ff2bd6",
+      "gradientMiddle": "#9b5de5",
+      "gradientEnd": "#35f2d0"
+    }
   }
 }

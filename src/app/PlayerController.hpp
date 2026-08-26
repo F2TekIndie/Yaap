@@ -20,6 +20,8 @@
 
 namespace yaap {
 
+class AudioAnalysisEngine;
+
 class PlayerController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
@@ -42,6 +44,7 @@ class PlayerController final : public QObject {
 
 public:
     explicit PlayerController(QObject* parent = nullptr);
+    explicit PlayerController(AudioAnalysisEngine& analysisEngine, QObject* parent = nullptr);
     ~PlayerController() override;
 
     PlayerController(const PlayerController&) = delete;
@@ -83,6 +86,8 @@ signals:
     void controlsChanged();
 
 private:
+    PlayerController(AudioAnalysisEngine* analysisEngine, QObject* parent);
+
     enum class StreamStartMode {
         Ready,
         Stopped,

@@ -22,6 +22,14 @@ class ThemeManager final : public QObject {
     Q_PROPERTY(int cornerRadius READ cornerRadius NOTIFY themeChanged)
     Q_PROPERTY(int spacing READ spacing NOTIFY themeChanged)
     Q_PROPERTY(QString backgroundEffect READ backgroundEffect NOTIFY themeChanged)
+    Q_PROPERTY(int spectrumColumns READ spectrumColumns NOTIFY themeChanged)
+    Q_PROPERTY(bool spectrumMirror READ spectrumMirror NOTIFY themeChanged)
+    Q_PROPERTY(qreal spectrumOpacity READ spectrumOpacity NOTIFY themeChanged)
+    Q_PROPERTY(int spectrumAttackMilliseconds READ spectrumAttackMilliseconds NOTIFY themeChanged)
+    Q_PROPERTY(int spectrumReleaseMilliseconds READ spectrumReleaseMilliseconds NOTIFY themeChanged)
+    Q_PROPERTY(QColor spectrumGradientStart READ spectrumGradientStart NOTIFY themeChanged)
+    Q_PROPERTY(QColor spectrumGradientMiddle READ spectrumGradientMiddle NOTIFY themeChanged)
+    Q_PROPERTY(QColor spectrumGradientEnd READ spectrumGradientEnd NOTIFY themeChanged)
 
 public:
     explicit ThemeManager(QObject* parent = nullptr);
@@ -41,6 +49,14 @@ public:
     [[nodiscard]] int cornerRadius() const noexcept;
     [[nodiscard]] int spacing() const noexcept;
     [[nodiscard]] QString backgroundEffect() const;
+    [[nodiscard]] int spectrumColumns() const noexcept;
+    [[nodiscard]] bool spectrumMirror() const noexcept;
+    [[nodiscard]] qreal spectrumOpacity() const noexcept;
+    [[nodiscard]] int spectrumAttackMilliseconds() const noexcept;
+    [[nodiscard]] int spectrumReleaseMilliseconds() const noexcept;
+    [[nodiscard]] QColor spectrumGradientStart() const;
+    [[nodiscard]] QColor spectrumGradientMiddle() const;
+    [[nodiscard]] QColor spectrumGradientEnd() const;
 
 signals:
     void themeChanged();
@@ -57,6 +73,14 @@ private:
         int cornerRadius{8};
         int spacing{12};
         QString backgroundEffect{"none"};
+        int spectrumColumns{48};
+        bool spectrumMirror{true};
+        qreal spectrumOpacity{0.28};
+        int spectrumAttackMilliseconds{45};
+        int spectrumReleaseMilliseconds{220};
+        QColor spectrumGradientStart{"#80cbc4"};
+        QColor spectrumGradientMiddle{"#aeb8ca"};
+        QColor spectrumGradientEnd{"#80cbc4"};
     };
 
     static bool readThemeFile(const QString& path, ThemeData& data, QString& error);

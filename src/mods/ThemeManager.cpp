@@ -6,6 +6,8 @@
 #include <QJsonParseError>
 #include <QSettings>
 
+#include <cmath>
+
 namespace yaap {
 namespace {
 
@@ -81,6 +83,29 @@ QColor ThemeManager::error() const { return m_current.error; }
 int ThemeManager::cornerRadius() const noexcept { return m_current.cornerRadius; }
 int ThemeManager::spacing() const noexcept { return m_current.spacing; }
 QString ThemeManager::backgroundEffect() const { return m_current.backgroundEffect; }
+int ThemeManager::spectrumColumns() const noexcept { return m_current.spectrumColumns; }
+bool ThemeManager::spectrumMirror() const noexcept { return m_current.spectrumMirror; }
+qreal ThemeManager::spectrumOpacity() const noexcept { return m_current.spectrumOpacity; }
+int ThemeManager::spectrumAttackMilliseconds() const noexcept
+{
+    return m_current.spectrumAttackMilliseconds;
+}
+int ThemeManager::spectrumReleaseMilliseconds() const noexcept
+{
+    return m_current.spectrumReleaseMilliseconds;
+}
+QColor ThemeManager::spectrumGradientStart() const
+{
+    return m_current.spectrumGradientStart;
+}
+QColor ThemeManager::spectrumGradientMiddle() const
+{
+    return m_current.spectrumGradientMiddle;
+}
+QColor ThemeManager::spectrumGradientEnd() const
+{
+    return m_current.spectrumGradientEnd;
+}
 
 bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& error)
 {
@@ -119,14 +144,94 @@ bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& 
     }
     data.cornerRadius = cornerRadius;
     data.spacing = spacing;
+    data.spectrumGradientStart = data.accent;
+    data.spectrumGradientMiddle = data.secondaryText;
+    data.spectrumGradientEnd = data.accent;
 
     const auto background = root.value("background").toObject();
     const auto backgroundEffect = background.value("effect").toString("none");
-    if (backgroundEffect != "none" && backgroundEffect != "waves") {
+    if (backgroundEffect != "none" && backgroundEffect != "waves"
+        && backgroundEffect != "spectrum") {
         error = "Theme background effect is not supported.";
         return false;
     }
     data.backgroundEffect = backgroundEffect;
+    if (backgroundEffect == "spectrum") {
+        const auto parametersValue = background.value("parameters");
+        if (!parametersValue.isUndefined() && !parametersValue.isObject()) {
+            error = "Spectrum background parameters must be an object.";
+            return false;
+        }
+        const auto parameters = parametersValue.toObject();
+        const auto columnsValue = parameters.value("columns");
+        const auto mirrorValue = parameters.value("mirror");
+        const auto opacityValue = parameters.value("opacity");
+        const auto attackValue = parameters.value("attackMilliseconds");
+        const auto releaseValue = parameters.value("releaseMilliseconds");
+        const auto gradientStartValue = parameters.value("gradientStart");
+        const auto gradientMiddleValue = parameters.value("gradientMiddle");
+        const auto gradientEndValue = parameters.value("gradientEnd");
+        if ((!columnsValue.isUndefined() && !columnsValue.isDouble())
+            || (!mirrorValue.isUndefined() && !mirrorValue.isBool())
+            || (!opacityValue.isUndefined() && !opacityValue.isDouble())
+            || (!attackValue.isUndefined() && !attackValue.isDouble())
+            || (!releaseValue.isUndefined() && !releaseValue.isDouble())
+            || (!gradientStartValue.isUndefined() && !gradientStartValue.isString())
+            || (!gradientMiddleValue.isUndefined() && !gradientMiddleValue.isString())
+            || (!gradientEndValue.isUndefined() && !gradientEndValue.isString())) {
+            error = "Spectrum background parameters have invalid types.";
+            return false;
+        }
+        const auto containsFractionalInteger = [](const QJsonValue& value) {
+            return value.isDouble() && value.toDouble() != std::floor(value.toDouble());
+        };
+        if (containsFractionalInteger(columnsValue)
+            || containsFractionalInteger(attackValue)
+            || containsFractionalInteger(releaseValue)) {
+            error = "Spectrum column and timing parameters must be whole numbers.";
+            return false;
+        }
+
+        data.spectrumColumns = columnsValue.toInt(data.spectrumColumns);
+        data.spectrumMirror = mirrorValue.toBool(data.spectrumMirror);
+        data.spectrumOpacity = opacityValue.toDouble(data.spectrumOpacity);
+        data.spectrumAttackMilliseconds = attackValue.toInt(
+            data.spectrumAttackMilliseconds);
+        data.spectrumReleaseMilliseconds = releaseValue.toInt(
+            data.spectrumReleaseMilliseconds);
+        const auto readGradientColor = [&error](const QJsonValue& value,
+                                               QColor& output,
+                                               const char* name) {
+            if (value.isUndefined()) {
+                return true;
+            }
+            const QColor color{value.toString()};
+            if (!color.isValid()) {
+                error = "Spectrum background contains an invalid "
+                    + QString::fromLatin1(name) + " color.";
+                return false;
+            }
+            output = color;
+            return true;
+        };
+        if (!readGradientColor(gradientStartValue,
+                data.spectrumGradientStart, "gradientStart")
+            || !readGradientColor(gradientMiddleValue,
+                data.spectrumGradientMiddle, "gradientMiddle")
+            || !readGradientColor(gradientEndValue,
+                data.spectrumGradientEnd, "gradientEnd")) {
+            return false;
+        }
+        if (data.spectrumColumns < 8 || data.spectrumColumns > 48
+            || data.spectrumOpacity < 0.02 || data.spectrumOpacity > 0.80
+            || data.spectrumAttackMilliseconds < 0
+            || data.spectrumAttackMilliseconds > 1'000
+            || data.spectrumReleaseMilliseconds < 0
+            || data.spectrumReleaseMilliseconds > 3'000) {
+            error = "Spectrum background parameters are outside supported bounds.";
+            return false;
+        }
+    }
     return true;
 }
 

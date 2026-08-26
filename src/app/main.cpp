@@ -1,3 +1,4 @@
+#include "app/AudioVisualizationModel.hpp"
 #include "app/PlayerController.hpp"
 #include "app/LibraryController.hpp"
 #include "app/RadioController.hpp"
@@ -16,6 +17,7 @@
 #include "radio/RadioBrowserClient.hpp"
 #include "security/CredentialHandleBroker.hpp"
 #include "security/CredentialStore.hpp"
+#include "audio/AudioAnalysisEngine.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -54,7 +56,9 @@ int main(int argc, char* argv[])
     }
     yaap::LibraryIndexer libraryIndexer{libraryDatabase, cachePath + "/artwork"};
     yaap::LibraryController library{libraryDatabase, libraryIndexer};
-    yaap::PlayerController player;
+    yaap::AudioAnalysisEngine audioAnalysis;
+    yaap::PlayerController player{audioAnalysis};
+    yaap::AudioVisualizationModel audioVisualization{audioAnalysis};
     yaap::RadioBrowserClient radioBrowserClient;
     yaap::RadioBrowserDirectoryModel radioDirectory{radioBrowserClient, providerCache};
     yaap::RadioController radio{&radioBrowserClient};
@@ -111,6 +115,8 @@ int main(int argc, char* argv[])
     qmlRegisterSingletonInstance("Yaap.ModApi", 1, 0, "Mods", &mods);
     qmlRegisterSingletonInstance("Yaap.ModApi", 1, 0, "Extensions", &extensions);
     qmlRegisterSingletonInstance("Yaap.ModApi", 1, 0, "ModApi", &modApi);
+    qmlRegisterSingletonInstance(
+        "Yaap.ModApi", 1, 1, "AudioVisualization", &audioVisualization);
     qmlRegisterSingletonInstance(
         "Yaap.ModApi", 1, 0, "ProviderExtensions", &providerExtensions);
     qmlRegisterSingletonInstance("Yaap.App", 1, 0, "Providers", &providerGateway);

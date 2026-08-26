@@ -795,6 +795,16 @@ ApplicationWindow {
         }
     }
 
+    Loader {
+        anchors.fill: parent
+        active: Theme.backgroundEffect === "spectrum"
+        sourceComponent: Component {
+            SpectrumBackground {
+                anchors.fill: parent
+            }
+        }
+    }
+
     Item {
         id: windowChrome
 

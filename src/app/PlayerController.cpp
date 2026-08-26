@@ -1,5 +1,6 @@
 #include "app/PlayerController.hpp"
 
+#include "audio/AudioAnalysisEngine.hpp"
 #include "audio/FFmpegDecoder.hpp"
 
 #include <QFileInfo>
@@ -39,7 +40,18 @@ namespace {
 } // namespace
 
 PlayerController::PlayerController(QObject* parent)
+    : PlayerController(nullptr, parent)
+{
+}
+
+PlayerController::PlayerController(AudioAnalysisEngine& analysisEngine, QObject* parent)
+    : PlayerController(&analysisEngine, parent)
+{
+}
+
+PlayerController::PlayerController(AudioAnalysisEngine* analysisEngine, QObject* parent)
     : QObject(parent)
+    , m_output(analysisEngine)
 {
     // PROTOTYPE: Position/end state is polled from atomics. The full playback
     // control layer should publish coalesced PlaybackSessionSnapshot updates.

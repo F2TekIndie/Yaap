@@ -119,7 +119,20 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
         INFO(error.toStdString());
         REQUIRE(themes.selectTheme(parsed.manifest.id, error));
         CHECK(themes.currentThemeId() == parsed.manifest.id);
-        CHECK(themes.backgroundEffect() == (package == "org.yaap.ocean-theme" ? "waves" : "none"));
+        const auto expectedEffect = package == "org.yaap.ocean-theme"
+            ? QString{"waves"}
+            : package == "org.yaap.synthwave-theme" ? QString{"spectrum"} : QString{"none"};
+        CHECK(themes.backgroundEffect() == expectedEffect);
+        if (package == "org.yaap.synthwave-theme") {
+            CHECK(themes.spectrumColumns() == 48);
+            CHECK(themes.spectrumMirror());
+            CHECK(themes.spectrumOpacity() == 0.32);
+            CHECK(themes.spectrumAttackMilliseconds() == 45);
+            CHECK(themes.spectrumReleaseMilliseconds() == 260);
+            CHECK(themes.spectrumGradientStart() == QColor{"#ff2bd6"});
+            CHECK(themes.spectrumGradientMiddle() == QColor{"#9b5de5"});
+            CHECK(themes.spectrumGradientEnd() == QColor{"#35f2d0"});
+        }
     }
 }
 
@@ -142,6 +155,27 @@ TEST_CASE("Theme background effects are restricted to host-owned renderers")
     QString error;
     CHECK_FALSE(themes.registerTheme(theme, error));
     CHECK(error.contains("not supported"));
+}
+
+TEST_CASE("Spectrum theme parameters are strictly bounded")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9},
+      "background":{"effect":"spectrum","parameters":{"columns":200,"opacity":2.0}}
+    })json");
+    ModManifest theme{.id = "org.example.invalid-spectrum", .name = "Invalid spectrum",
+        .version = "1.0", .contentDigest = "invalid-spectrum-digest",
+        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .theme = {.dataPath = directory.filePath("theme.json")}};
+
+    ThemeManager themes;
+    QString error;
+    CHECK_FALSE(themes.registerTheme(theme, error));
+    CHECK(error.contains("outside supported bounds"));
 }
 
 TEST_CASE("Mod manager can grant enable and select a bundled theme")

@@ -9,9 +9,11 @@
 
 namespace yaap {
 
+class AudioAnalysisEngine;
+
 class MiniaudioOutput final {
 public:
-    MiniaudioOutput();
+    explicit MiniaudioOutput(AudioAnalysisEngine* analysisEngine = nullptr);
     ~MiniaudioOutput();
 
     MiniaudioOutput(const MiniaudioOutput&) = delete;

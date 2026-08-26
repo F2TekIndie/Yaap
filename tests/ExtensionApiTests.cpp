@@ -7,6 +7,7 @@ namespace yaap {
 
 TEST_CASE("Extension API versions parse and compare without accepting loose syntax")
 {
+    CHECK(extensionApiVersion == ApiVersion{1, 1});
     REQUIRE(ApiVersion::parse("1.0") == ApiVersion{1, 0});
     CHECK(ApiVersion::parse("01.0") == std::nullopt);
     CHECK(ApiVersion::parse("1") == std::nullopt);

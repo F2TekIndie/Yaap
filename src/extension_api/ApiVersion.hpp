@@ -17,7 +17,7 @@ struct ApiVersion final {
     auto operator<=>(const ApiVersion&) const = default;
 };
 
-inline constexpr ApiVersion extensionApiVersion{1, 0};
+inline constexpr ApiVersion extensionApiVersion{1, 1};
 inline constexpr int modManifestSchemaVersion = 1;
 inline constexpr int providerProtocolVersion = 1;
 

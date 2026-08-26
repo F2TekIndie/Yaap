@@ -1,4 +1,5 @@
 #include "app/PlayerController.hpp"
+#include "audio/AudioAnalysisEngine.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -16,7 +17,8 @@ TEST_CASE("Player controller starts an opted-in live radio stream",
         SKIP("Set YAAP_TEST_RADIO_URL to run the live radio controller test.");
     }
 
-    yaap::PlayerController player;
+    yaap::AudioAnalysisEngine analysis;
+    yaap::PlayerController player{analysis};
     player.openStream(QUrl{radioUrl}, "Live radio test");
 
     QElapsedTimer timer;
@@ -36,4 +38,12 @@ TEST_CASE("Player controller starts an opted-in live radio stream",
         QThread::msleep(5);
     }
     REQUIRE(player.positionMilliseconds() > 0);
+
+    while (analysis.snapshot().sequence == 0 && timer.elapsed() < 24'000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
+        QThread::msleep(5);
+    }
+    const auto spectrum = analysis.snapshot();
+    REQUIRE(spectrum.sequence > 0);
+    REQUIRE(spectrum.active);
 }

@@ -1,5 +1,7 @@
 #include "audio/MiniaudioOutput.hpp"
 
+#include "audio/AudioAnalysisEngine.hpp"
+
 #include <algorithm>
 #include <span>
 #include <utility>
@@ -20,7 +22,13 @@ namespace yaap {
 struct MiniaudioOutput::Impl final {
     ma_device device{};
     std::shared_ptr<PcmStream> stream;
+    AudioAnalysisEngine* analysisEngine{};
     bool initialized{};
+
+    explicit Impl(AudioAnalysisEngine* analysisEngineValue)
+        : analysisEngine(analysisEngineValue)
+    {
+    }
 
     static void dataCallback(
         ma_device* device,
@@ -37,6 +45,9 @@ struct MiniaudioOutput::Impl final {
                 outputSamples, static_cast<std::size_t>(frameCount));
         } else {
             std::fill(outputSamples.begin(), outputSamples.end(), 0.0F);
+        }
+        if (self->analysisEngine != nullptr) {
+            self->analysisEngine->submitInterleaved(outputSamples);
         }
     }
 
@@ -80,8 +91,8 @@ struct MiniaudioOutput::Impl final {
     }
 };
 
-MiniaudioOutput::MiniaudioOutput()
-    : m_impl(std::make_unique<Impl>())
+MiniaudioOutput::MiniaudioOutput(AudioAnalysisEngine* analysisEngine)
+    : m_impl(std::make_unique<Impl>(analysisEngine))
 {
 }
 
@@ -97,6 +108,9 @@ bool MiniaudioOutput::attach(std::shared_ptr<PcmStream> stream, std::string& err
     m_impl->stopDevice();
     if (m_impl->stream) {
         m_impl->stream->pause();
+    }
+    if (m_impl->analysisEngine != nullptr) {
+        m_impl->analysisEngine->reset();
     }
     m_impl->stream = std::move(stream);
     if (!m_impl->initialize(error)) {
@@ -141,6 +155,9 @@ void MiniaudioOutput::clear() noexcept
     if (m_impl->stream) {
         m_impl->stream->pause();
         m_impl->stream.reset();
+    }
+    if (m_impl->analysisEngine != nullptr) {
+        m_impl->analysisEngine->reset();
     }
 }
 
