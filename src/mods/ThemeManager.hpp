@@ -30,6 +30,8 @@ class ThemeManager final : public QObject {
     Q_PROPERTY(QColor spectrumGradientStart READ spectrumGradientStart NOTIFY themeChanged)
     Q_PROPERTY(QColor spectrumGradientMiddle READ spectrumGradientMiddle NOTIFY themeChanged)
     Q_PROPERTY(QColor spectrumGradientEnd READ spectrumGradientEnd NOTIFY themeChanged)
+    Q_PROPERTY(bool spectrumHueShiftAdjustable READ spectrumHueShiftAdjustable NOTIFY themeChanged)
+    Q_PROPERTY(qreal spectrumHueShiftDegrees READ spectrumHueShiftDegrees WRITE setSpectrumHueShiftDegrees NOTIFY themeChanged)
 
 public:
     explicit ThemeManager(QObject* parent = nullptr);
@@ -57,6 +59,9 @@ public:
     [[nodiscard]] QColor spectrumGradientStart() const;
     [[nodiscard]] QColor spectrumGradientMiddle() const;
     [[nodiscard]] QColor spectrumGradientEnd() const;
+    [[nodiscard]] bool spectrumHueShiftAdjustable() const noexcept;
+    [[nodiscard]] qreal spectrumHueShiftDegrees() const noexcept;
+    void setSpectrumHueShiftDegrees(qreal degrees);
 
 signals:
     void themeChanged();
@@ -81,6 +86,8 @@ private:
         QColor spectrumGradientStart{"#80cbc4"};
         QColor spectrumGradientMiddle{"#aeb8ca"};
         QColor spectrumGradientEnd{"#80cbc4"};
+        bool spectrumHueShiftAdjustable{};
+        qreal spectrumHueShiftDegrees{};
     };
 
     static bool readThemeFile(const QString& path, ThemeData& data, QString& error);

@@ -12,6 +12,8 @@ namespace yaap {
 namespace {
 
 constexpr qint64 maximumThemeBytes = 256 * 1024;
+constexpr qreal minimumHueShiftDegrees = -180.0;
+constexpr qreal maximumHueShiftDegrees = 180.0;
 
 bool readColor(const QJsonObject& palette, const char* key, QColor& output, QString& error)
 {
@@ -22,6 +24,29 @@ bool readColor(const QJsonObject& palette, const char* key, QColor& output, QStr
     }
     output = candidate;
     return true;
+}
+
+QString hueShiftSettingsKey(const QString& themeId)
+{
+    return "mods/themeSettings/" + themeId + "/spectrumHueShiftDegrees";
+}
+
+QColor hueShifted(const QColor& source, const qreal degrees)
+{
+    if (qFuzzyIsNull(degrees)) {
+        return source;
+    }
+    auto shifted = source.toHsl();
+    auto hue = shifted.hslHueF();
+    if (hue < 0.0) {
+        return source;
+    }
+    hue = std::fmod(hue + degrees / 360.0, 1.0);
+    if (hue < 0.0) {
+        hue += 1.0;
+    }
+    shifted.setHslF(hue, shifted.hslSaturationF(), shifted.lightnessF(), shifted.alphaF());
+    return shifted.toRgb();
 }
 
 } // namespace
@@ -67,7 +92,17 @@ bool ThemeManager::selectTheme(const QString& modId, QString& error)
     }
     m_currentThemeId = modId;
     m_current = iterator.value();
-    QSettings{}.setValue("mods/currentTheme", modId);
+    QSettings settings;
+    if (m_current.spectrumHueShiftAdjustable) {
+        bool valid = false;
+        const auto savedDegrees = settings.value(hueShiftSettingsKey(modId),
+            m_current.spectrumHueShiftDegrees).toDouble(&valid);
+        if (valid && std::isfinite(savedDegrees)) {
+            m_current.spectrumHueShiftDegrees = qBound(minimumHueShiftDegrees,
+                savedDegrees, maximumHueShiftDegrees);
+        }
+    }
+    settings.setValue("mods/currentTheme", modId);
     emit themeChanged();
     return true;
 }
@@ -96,15 +131,37 @@ int ThemeManager::spectrumReleaseMilliseconds() const noexcept
 }
 QColor ThemeManager::spectrumGradientStart() const
 {
-    return m_current.spectrumGradientStart;
+    return hueShifted(m_current.spectrumGradientStart, m_current.spectrumHueShiftDegrees);
 }
 QColor ThemeManager::spectrumGradientMiddle() const
 {
-    return m_current.spectrumGradientMiddle;
+    return hueShifted(m_current.spectrumGradientMiddle, m_current.spectrumHueShiftDegrees);
 }
 QColor ThemeManager::spectrumGradientEnd() const
 {
-    return m_current.spectrumGradientEnd;
+    return hueShifted(m_current.spectrumGradientEnd, m_current.spectrumHueShiftDegrees);
+}
+bool ThemeManager::spectrumHueShiftAdjustable() const noexcept
+{
+    return m_current.spectrumHueShiftAdjustable;
+}
+qreal ThemeManager::spectrumHueShiftDegrees() const noexcept
+{
+    return m_current.spectrumHueShiftDegrees;
+}
+void ThemeManager::setSpectrumHueShiftDegrees(const qreal degrees)
+{
+    if (!m_current.spectrumHueShiftAdjustable || !std::isfinite(degrees)) {
+        return;
+    }
+    const auto bounded = qBound(minimumHueShiftDegrees, degrees, maximumHueShiftDegrees);
+    if (qFuzzyCompare(m_current.spectrumHueShiftDegrees + 181.0, bounded + 181.0)) {
+        return;
+    }
+    m_current.spectrumHueShiftDegrees = bounded;
+    m_themes[m_currentThemeId].spectrumHueShiftDegrees = bounded;
+    QSettings{}.setValue(hueShiftSettingsKey(m_currentThemeId), bounded);
+    emit themeChanged();
 }
 
 bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& error)
@@ -171,6 +228,7 @@ bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& 
         const auto gradientStartValue = parameters.value("gradientStart");
         const auto gradientMiddleValue = parameters.value("gradientMiddle");
         const auto gradientEndValue = parameters.value("gradientEnd");
+        const auto hueShiftAdjustableValue = parameters.value("hueShiftAdjustable");
         if ((!columnsValue.isUndefined() && !columnsValue.isDouble())
             || (!mirrorValue.isUndefined() && !mirrorValue.isBool())
             || (!opacityValue.isUndefined() && !opacityValue.isDouble())
@@ -178,7 +236,9 @@ bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& 
             || (!releaseValue.isUndefined() && !releaseValue.isDouble())
             || (!gradientStartValue.isUndefined() && !gradientStartValue.isString())
             || (!gradientMiddleValue.isUndefined() && !gradientMiddleValue.isString())
-            || (!gradientEndValue.isUndefined() && !gradientEndValue.isString())) {
+            || (!gradientEndValue.isUndefined() && !gradientEndValue.isString())
+            || (!hueShiftAdjustableValue.isUndefined()
+                && !hueShiftAdjustableValue.isBool())) {
             error = "Spectrum background parameters have invalid types.";
             return false;
         }
@@ -199,6 +259,7 @@ bool ThemeManager::readThemeFile(const QString& path, ThemeData& data, QString& 
             data.spectrumAttackMilliseconds);
         data.spectrumReleaseMilliseconds = releaseValue.toInt(
             data.spectrumReleaseMilliseconds);
+        data.spectrumHueShiftAdjustable = hueShiftAdjustableValue.toBool(false);
         const auto readGradientColor = [&error](const QJsonValue& value,
                                                QColor& output,
                                                const char* name) {

@@ -57,8 +57,10 @@ Theme changes are validated completely before being applied. API 1.1 adds the
 host-owned `spectrum` background effect. A theme may configure 8–48 columns,
 mirroring, opacity, and bounded attack/release durations through the optional
 `background.parameters` object. It may also provide validated `gradientStart`,
-`gradientMiddle`, and `gradientEnd` colors. Themes receive no PCM and still
-execute no code.
+`gradientMiddle`, and `gradientEnd` colors. A spectrum theme can opt into the
+host-owned hue slider with `hueShiftAdjustable: true`; the selected hue is
+stored per theme and only shifts the effect gradient. Themes receive no PCM and
+still execute no code.
 
 ## UI extensions
 

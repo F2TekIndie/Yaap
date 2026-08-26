@@ -230,6 +230,38 @@ ApplicationWindow {
                                 onClicked: Mods.revokeAll(modId)
                             }
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: isTheme
+                                && Theme.currentThemeId === modId
+                                && Theme.spectrumHueShiftAdjustable
+
+                            Label {
+                                text: "Background hue"
+                                color: Theme.secondaryText
+                            }
+                            Slider {
+                                id: hueShiftSlider
+
+                                Layout.fillWidth: true
+                                from: -180
+                                to: 180
+                                stepSize: 1
+                                Accessible.name: "Synthwave background hue shift"
+                                onMoved: Theme.spectrumHueShiftDegrees = value
+
+                                Binding on value {
+                                    when: !hueShiftSlider.pressed
+                                    value: Theme.spectrumHueShiftDegrees
+                                }
+                            }
+                            Label {
+                                Layout.preferredWidth: 48
+                                text: Math.round(hueShiftSlider.value) + "°"
+                                color: Theme.primaryText
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
                     }
                 }
             }

@@ -132,6 +132,19 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
             CHECK(themes.spectrumGradientStart() == QColor{"#ff2bd6"});
             CHECK(themes.spectrumGradientMiddle() == QColor{"#9b5de5"});
             CHECK(themes.spectrumGradientEnd() == QColor{"#35f2d0"});
+            CHECK(themes.spectrumHueShiftAdjustable());
+            CHECK(themes.spectrumHueShiftDegrees() == 0.0);
+            themes.setSpectrumHueShiftDegrees(120.0);
+            CHECK(themes.spectrumHueShiftDegrees() == 120.0);
+            CHECK(themes.spectrumGradientStart() != QColor{"#ff2bd6"});
+            themes.setSpectrumHueShiftDegrees(999.0);
+            CHECK(themes.spectrumHueShiftDegrees() == 180.0);
+
+            ThemeManager restoredThemes;
+            REQUIRE(restoredThemes.registerTheme(parsed.manifest, error));
+            REQUIRE(restoredThemes.selectTheme(parsed.manifest.id, error));
+            CHECK(restoredThemes.spectrumHueShiftDegrees() == 180.0);
+            restoredThemes.setSpectrumHueShiftDegrees(0.0);
         }
     }
 }
