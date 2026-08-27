@@ -36,5 +36,32 @@
       "windowShape": true
     },
     "effect": "paperPlanes"
+  },
+  "miniPlayer": {
+    "size": {"width": 480, "height": 112},
+    "layout": {
+      "controlArea": {
+        "leftInset": 44,
+        "topInset": 14,
+        "rightInset": 112,
+        "bottomInset": 14
+      },
+      "windowControls": {
+        "rightInset": 28,
+        "topInset": 8,
+        "buttonWidth": 36,
+        "buttonHeight": 32,
+        "spacing": 4
+      }
+    },
+    "background": {
+      "image": {
+        "asset": "assets/miniplayer-paper-plane.svg",
+        "fit": "stretch",
+        "alignment": "center",
+        "opacity": 0.94,
+        "windowShape": true
+      }
+    }
   }
 }

@@ -262,6 +262,64 @@ bool ThemeManager::backgroundImageShapesWindow() const noexcept
     return m_current.backgroundImageShapesWindow;
 }
 QString ThemeManager::backgroundEffect() const { return m_current.backgroundEffect; }
+int ThemeManager::miniPlayerWidth() const noexcept { return m_current.miniPlayerWidth; }
+int ThemeManager::miniPlayerHeight() const noexcept { return m_current.miniPlayerHeight; }
+int ThemeManager::miniControlAreaLeftInset() const noexcept
+{
+    return m_current.miniControlAreaLeftInset;
+}
+int ThemeManager::miniControlAreaTopInset() const noexcept
+{
+    return m_current.miniControlAreaTopInset;
+}
+int ThemeManager::miniControlAreaRightInset() const noexcept
+{
+    return m_current.miniControlAreaRightInset;
+}
+int ThemeManager::miniControlAreaBottomInset() const noexcept
+{
+    return m_current.miniControlAreaBottomInset;
+}
+int ThemeManager::miniWindowControlsRightInset() const noexcept
+{
+    return m_current.miniWindowControlsRightInset;
+}
+int ThemeManager::miniWindowControlsTopInset() const noexcept
+{
+    return m_current.miniWindowControlsTopInset;
+}
+int ThemeManager::miniWindowControlWidth() const noexcept
+{
+    return m_current.miniWindowControlWidth;
+}
+int ThemeManager::miniWindowControlHeight() const noexcept
+{
+    return m_current.miniWindowControlHeight;
+}
+int ThemeManager::miniWindowControlSpacing() const noexcept
+{
+    return m_current.miniWindowControlSpacing;
+}
+QUrl ThemeManager::miniBackgroundImageSource() const
+{
+    return m_current.miniBackgroundImageSource;
+}
+QString ThemeManager::miniBackgroundImageFit() const
+{
+    return m_current.miniBackgroundImageFit;
+}
+QString ThemeManager::miniBackgroundImageAlignment() const
+{
+    return m_current.miniBackgroundImageAlignment;
+}
+qreal ThemeManager::miniBackgroundImageOpacity() const noexcept
+{
+    return m_current.miniBackgroundImageOpacity;
+}
+bool ThemeManager::miniBackgroundImageShapesWindow() const noexcept
+{
+    return m_current.miniBackgroundImageShapesWindow;
+}
 int ThemeManager::spectrumColumns() const noexcept { return m_current.spectrumColumns; }
 bool ThemeManager::spectrumMirror() const noexcept { return m_current.spectrumMirror; }
 qreal ThemeManager::spectrumOpacity() const noexcept { return m_current.spectrumOpacity; }
@@ -532,6 +590,152 @@ bool ThemeManager::readThemeFile(const QString& path,
             || data.spectrumReleaseMilliseconds > 3'000) {
             error = "Spectrum background parameters are outside supported bounds.";
             return false;
+        }
+    }
+
+    const auto miniPlayerValue = root.value("miniPlayer");
+    if (!miniPlayerValue.isUndefined()) {
+        if (!miniPlayerValue.isObject()) {
+            error = "Theme miniplayer declaration must be an object.";
+            return false;
+        }
+        const auto miniPlayer = miniPlayerValue.toObject();
+        const auto sizeValue = miniPlayer.value("size");
+        if (!sizeValue.isUndefined()) {
+            if (!sizeValue.isObject()) {
+                error = "Theme miniplayer size must be an object.";
+                return false;
+            }
+            const auto size = sizeValue.toObject();
+            if (!readLayoutInteger(size, "width", 480, 480,
+                    data.miniPlayerWidth, error)
+                || !readLayoutInteger(size, "height", 112, 112,
+                    data.miniPlayerHeight, error)) {
+                return false;
+            }
+        }
+
+        const auto miniLayoutValue = miniPlayer.value("layout");
+        if (!miniLayoutValue.isUndefined()) {
+            if (!miniLayoutValue.isObject()) {
+                error = "Theme miniplayer layout must be an object.";
+                return false;
+            }
+            const auto miniLayout = miniLayoutValue.toObject();
+            const auto controlAreaValue = miniLayout.value("controlArea");
+            if (!controlAreaValue.isUndefined()) {
+                if (!controlAreaValue.isObject()) {
+                    error = "Theme miniplayer control area must be an object.";
+                    return false;
+                }
+                const auto controlArea = controlAreaValue.toObject();
+                if (!readLayoutInteger(controlArea, "leftInset", 0,
+                        maximumLayoutInset, data.miniControlAreaLeftInset, error)
+                    || !readLayoutInteger(controlArea, "topInset", 0,
+                        maximumLayoutInset, data.miniControlAreaTopInset, error)
+                    || !readLayoutInteger(controlArea, "rightInset", 0,
+                        maximumLayoutInset, data.miniControlAreaRightInset, error)
+                    || !readLayoutInteger(controlArea, "bottomInset", 0,
+                        maximumLayoutInset, data.miniControlAreaBottomInset, error)) {
+                    return false;
+                }
+            }
+
+            const auto controlsValue = miniLayout.value("windowControls");
+            if (!controlsValue.isUndefined()) {
+                if (!controlsValue.isObject()) {
+                    error = "Theme miniplayer window controls must be an object.";
+                    return false;
+                }
+                const auto controls = controlsValue.toObject();
+                if (!readLayoutInteger(controls, "rightInset", 0,
+                        maximumLayoutInset, data.miniWindowControlsRightInset, error)
+                    || !readLayoutInteger(controls, "topInset", 0,
+                        maximumLayoutInset, data.miniWindowControlsTopInset, error)
+                    || !readLayoutInteger(controls, "buttonWidth", 28, 72,
+                        data.miniWindowControlWidth, error)
+                    || !readLayoutInteger(controls, "buttonHeight", 24, 56,
+                        data.miniWindowControlHeight, error)
+                    || !readLayoutInteger(controls, "spacing", 0, 32,
+                        data.miniWindowControlSpacing, error)) {
+                    return false;
+                }
+            }
+        }
+
+        const auto minimumContentWidth = 160;
+        const auto minimumContentHeight = 48;
+        const auto controlsWidth = data.miniWindowControlWidth * 2
+            + data.miniWindowControlSpacing;
+        if (data.miniControlAreaLeftInset + data.miniControlAreaRightInset
+                > data.miniPlayerWidth - minimumContentWidth
+            || data.miniControlAreaTopInset + data.miniControlAreaBottomInset
+                > data.miniPlayerHeight - minimumContentHeight
+            || data.miniWindowControlsRightInset + controlsWidth
+                > data.miniPlayerWidth
+            || data.miniWindowControlsTopInset + data.miniWindowControlHeight
+                > data.miniPlayerHeight) {
+            error = "Theme miniplayer layout leaves too little usable space.";
+            return false;
+        }
+
+        const auto miniBackgroundValue = miniPlayer.value("background");
+        if (!miniBackgroundValue.isUndefined()) {
+            if (!miniBackgroundValue.isObject()) {
+                error = "Theme miniplayer background must be an object.";
+                return false;
+            }
+            const auto miniBackground = miniBackgroundValue.toObject();
+            const auto effectValue = miniBackground.value("effect");
+            if (!effectValue.isUndefined() && effectValue.toString("invalid") != "none") {
+                error = "Theme miniplayer background effects are not supported.";
+                return false;
+            }
+            const auto miniImageValue = miniBackground.value("image");
+            if (!miniImageValue.isUndefined()) {
+                if (!miniImageValue.isObject()) {
+                    error = "Theme miniplayer background image must be an object.";
+                    return false;
+                }
+                const auto image = miniImageValue.toObject();
+                const auto assetValue = image.value("asset");
+                const auto fitValue = image.value("fit");
+                const auto alignmentValue = image.value("alignment");
+                const auto opacityValue = image.value("opacity");
+                const auto windowShapeValue = image.value("windowShape");
+                if (!assetValue.isString()
+                    || (!fitValue.isUndefined() && !fitValue.isString())
+                    || (!alignmentValue.isUndefined() && !alignmentValue.isString())
+                    || (!opacityValue.isUndefined() && !opacityValue.isDouble())
+                    || (!windowShapeValue.isUndefined() && !windowShapeValue.isBool())) {
+                    error = "Theme miniplayer background image properties have invalid types.";
+                    return false;
+                }
+                data.miniBackgroundImageFit = fitValue.toString(
+                    data.miniBackgroundImageFit);
+                data.miniBackgroundImageAlignment = alignmentValue.toString(
+                    data.miniBackgroundImageAlignment);
+                data.miniBackgroundImageOpacity = opacityValue.toDouble(
+                    data.miniBackgroundImageOpacity);
+                data.miniBackgroundImageShapesWindow = windowShapeValue.toBool(false);
+                static const QSet<QString> supportedFits{
+                    "preserveAspectFit", "preserveAspectCrop", "stretch"};
+                static const QSet<QString> supportedAlignments{"center", "top",
+                    "top-left", "top-right", "left", "right", "bottom",
+                    "bottom-left", "bottom-right"};
+                if (!supportedFits.contains(data.miniBackgroundImageFit)
+                    || !supportedAlignments.contains(
+                        data.miniBackgroundImageAlignment)
+                    || data.miniBackgroundImageOpacity < 0.0
+                    || data.miniBackgroundImageOpacity > 1.0) {
+                    error = "Theme miniplayer background image properties are outside supported values.";
+                    return false;
+                }
+                if (!readBackgroundImage(packageRoot, assetValue.toString(),
+                        data.miniBackgroundImageSource, error)) {
+                    return false;
+                }
+            }
         }
     }
     return true;

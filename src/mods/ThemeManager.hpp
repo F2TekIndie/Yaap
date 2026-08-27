@@ -36,6 +36,22 @@ class ThemeManager final : public QObject {
     Q_PROPERTY(qreal backgroundImageOpacity READ backgroundImageOpacity NOTIFY themeChanged)
     Q_PROPERTY(bool backgroundImageShapesWindow READ backgroundImageShapesWindow NOTIFY themeChanged)
     Q_PROPERTY(QString backgroundEffect READ backgroundEffect NOTIFY themeChanged)
+    Q_PROPERTY(int miniPlayerWidth READ miniPlayerWidth NOTIFY themeChanged)
+    Q_PROPERTY(int miniPlayerHeight READ miniPlayerHeight NOTIFY themeChanged)
+    Q_PROPERTY(int miniControlAreaLeftInset READ miniControlAreaLeftInset NOTIFY themeChanged)
+    Q_PROPERTY(int miniControlAreaTopInset READ miniControlAreaTopInset NOTIFY themeChanged)
+    Q_PROPERTY(int miniControlAreaRightInset READ miniControlAreaRightInset NOTIFY themeChanged)
+    Q_PROPERTY(int miniControlAreaBottomInset READ miniControlAreaBottomInset NOTIFY themeChanged)
+    Q_PROPERTY(int miniWindowControlsRightInset READ miniWindowControlsRightInset NOTIFY themeChanged)
+    Q_PROPERTY(int miniWindowControlsTopInset READ miniWindowControlsTopInset NOTIFY themeChanged)
+    Q_PROPERTY(int miniWindowControlWidth READ miniWindowControlWidth NOTIFY themeChanged)
+    Q_PROPERTY(int miniWindowControlHeight READ miniWindowControlHeight NOTIFY themeChanged)
+    Q_PROPERTY(int miniWindowControlSpacing READ miniWindowControlSpacing NOTIFY themeChanged)
+    Q_PROPERTY(QUrl miniBackgroundImageSource READ miniBackgroundImageSource NOTIFY themeChanged)
+    Q_PROPERTY(QString miniBackgroundImageFit READ miniBackgroundImageFit NOTIFY themeChanged)
+    Q_PROPERTY(QString miniBackgroundImageAlignment READ miniBackgroundImageAlignment NOTIFY themeChanged)
+    Q_PROPERTY(qreal miniBackgroundImageOpacity READ miniBackgroundImageOpacity NOTIFY themeChanged)
+    Q_PROPERTY(bool miniBackgroundImageShapesWindow READ miniBackgroundImageShapesWindow NOTIFY themeChanged)
     Q_PROPERTY(int spectrumColumns READ spectrumColumns NOTIFY themeChanged)
     Q_PROPERTY(bool spectrumMirror READ spectrumMirror NOTIFY themeChanged)
     Q_PROPERTY(qreal spectrumOpacity READ spectrumOpacity NOTIFY themeChanged)
@@ -78,6 +94,22 @@ public:
     [[nodiscard]] qreal backgroundImageOpacity() const noexcept;
     [[nodiscard]] bool backgroundImageShapesWindow() const noexcept;
     [[nodiscard]] QString backgroundEffect() const;
+    [[nodiscard]] int miniPlayerWidth() const noexcept;
+    [[nodiscard]] int miniPlayerHeight() const noexcept;
+    [[nodiscard]] int miniControlAreaLeftInset() const noexcept;
+    [[nodiscard]] int miniControlAreaTopInset() const noexcept;
+    [[nodiscard]] int miniControlAreaRightInset() const noexcept;
+    [[nodiscard]] int miniControlAreaBottomInset() const noexcept;
+    [[nodiscard]] int miniWindowControlsRightInset() const noexcept;
+    [[nodiscard]] int miniWindowControlsTopInset() const noexcept;
+    [[nodiscard]] int miniWindowControlWidth() const noexcept;
+    [[nodiscard]] int miniWindowControlHeight() const noexcept;
+    [[nodiscard]] int miniWindowControlSpacing() const noexcept;
+    [[nodiscard]] QUrl miniBackgroundImageSource() const;
+    [[nodiscard]] QString miniBackgroundImageFit() const;
+    [[nodiscard]] QString miniBackgroundImageAlignment() const;
+    [[nodiscard]] qreal miniBackgroundImageOpacity() const noexcept;
+    [[nodiscard]] bool miniBackgroundImageShapesWindow() const noexcept;
     [[nodiscard]] int spectrumColumns() const noexcept;
     [[nodiscard]] bool spectrumMirror() const noexcept;
     [[nodiscard]] qreal spectrumOpacity() const noexcept;
@@ -118,6 +150,22 @@ private:
         qreal backgroundImageOpacity{1.0};
         bool backgroundImageShapesWindow{};
         QString backgroundEffect{"none"};
+        int miniPlayerWidth{480};
+        int miniPlayerHeight{112};
+        int miniControlAreaLeftInset{16};
+        int miniControlAreaTopInset{8};
+        int miniControlAreaRightInset{96};
+        int miniControlAreaBottomInset{8};
+        int miniWindowControlsRightInset{8};
+        int miniWindowControlsTopInset{8};
+        int miniWindowControlWidth{36};
+        int miniWindowControlHeight{32};
+        int miniWindowControlSpacing{4};
+        QUrl miniBackgroundImageSource;
+        QString miniBackgroundImageFit{"preserveAspectFit"};
+        QString miniBackgroundImageAlignment{"center"};
+        qreal miniBackgroundImageOpacity{1.0};
+        bool miniBackgroundImageShapesWindow{};
         int spectrumColumns{48};
         bool spectrumMirror{true};
         qreal spectrumOpacity{0.28};

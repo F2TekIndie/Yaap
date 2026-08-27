@@ -158,6 +158,11 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
             CHECK(themes.closeButtonTopInset() == 48);
             CHECK(themes.closeButtonWidth() == 44);
             CHECK(themes.closeButtonHeight() == 36);
+            CHECK(themes.miniPlayerWidth() == 480);
+            CHECK(themes.miniPlayerHeight() == 112);
+            CHECK(themes.miniBackgroundImageSource().fileName()
+                == "miniplayer-paper-plane.svg");
+            CHECK(themes.miniBackgroundImageShapesWindow());
         }
         if (package == "org.yaap.synthwave-theme") {
             CHECK(themes.backgroundImageSource().fileName() == "neon-horizon.svg");
@@ -171,6 +176,11 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
             CHECK(themes.controlAreaBottomInset() == 50);
             CHECK(themes.closeButtonRightInset() == 42);
             CHECK(themes.closeButtonTopInset() == 30);
+            CHECK(themes.miniPlayerWidth() == 480);
+            CHECK(themes.miniPlayerHeight() == 112);
+            CHECK(themes.miniBackgroundImageSource().fileName()
+                == "miniplayer-neon.svg");
+            CHECK(themes.miniBackgroundImageShapesWindow());
             CHECK(themes.spectrumColumns() == 48);
             CHECK(themes.spectrumMirror());
             CHECK(themes.spectrumOpacity() == 0.32);
@@ -260,7 +270,57 @@ TEST_CASE("Shaped sample themes keep controls inside their opaque window region"
             CAPTURE(transparentClosePixel.x(), transparentClosePixel.y());
             CHECK((transparentClosePixel == QPoint{-1, -1}));
         }
+
+        REQUIRE(themes.miniBackgroundImageShapesWindow());
+        const QSize miniSize{themes.miniPlayerWidth(), themes.miniPlayerHeight()};
+        QImageReader miniReader{themes.miniBackgroundImageSource().toLocalFile()};
+        miniReader.setScaledSize(miniSize);
+        const auto miniImage = miniReader.read().convertToFormat(
+            QImage::Format_ARGB32);
+        REQUIRE_FALSE(miniImage.isNull());
+        const QRect miniControlArea{themes.miniControlAreaLeftInset(),
+            themes.miniControlAreaTopInset(),
+            miniSize.width() - themes.miniControlAreaLeftInset()
+                - themes.miniControlAreaRightInset(),
+            miniSize.height() - themes.miniControlAreaTopInset()
+                - themes.miniControlAreaBottomInset()};
+        const auto controlsWidth = themes.miniWindowControlWidth() * 2
+            + themes.miniWindowControlSpacing();
+        const QRect miniWindowControls{
+            miniSize.width() - themes.miniWindowControlsRightInset()
+                - controlsWidth,
+            themes.miniWindowControlsTopInset(), controlsWidth,
+            themes.miniWindowControlHeight()};
+        CHECK((firstTransparentPixel(miniImage, miniControlArea)
+            == QPoint{-1, -1}));
+        CHECK((firstTransparentPixel(miniImage, miniWindowControls)
+            == QPoint{-1, -1}));
     }
+}
+
+TEST_CASE("Miniplayer theme effects are forbidden")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("theme.json"), R"json({
+      "schemaVersion":1,
+      "palette":{"windowTop":"#111111","windowBottom":"#000000","surface":"#222222",
+        "primaryText":"#ffffff","secondaryText":"#bbbbbb","accent":"#00ffff","error":"#ff0000"},
+      "metrics":{"cornerRadius":5,"spacing":9},
+      "miniPlayer":{
+        "size":{"width":480,"height":112},
+        "layout":{"controlArea":{"leftInset":10,"rightInset":100}},
+        "background":{"effect":"spectrum"}
+      }
+    })json");
+    ModManifest theme{.id = "org.example.invalid-mini", .name = "Invalid mini",
+        .version = "1.0", .contentDigest = "invalid-mini-digest",
+        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .theme = {.dataPath = directory.filePath("theme.json")}};
+
+    ThemeManager themes;
+    QString error;
+    CHECK_FALSE(themes.registerTheme(theme, error));
+    CHECK(error.contains("effects are not supported"));
 }
 
 TEST_CASE("Theme background effects are restricted to host-owned renderers")

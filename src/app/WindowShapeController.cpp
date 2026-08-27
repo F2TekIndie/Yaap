@@ -1,5 +1,6 @@
 #include "app/WindowShapeController.hpp"
 
+#include "app/WindowPresentationController.hpp"
 #include "mods/ThemeManager.hpp"
 
 #include <QDebug>
@@ -69,9 +70,13 @@ QRegion alphaRegion(const QImage& image)
 } // namespace
 
 WindowShapeController::WindowShapeController(
-    ThemeManager& themes, QQuickWindow& window, QObject* parent)
+    ThemeManager& themes,
+    WindowPresentationController& presentation,
+    QQuickWindow& window,
+    QObject* parent)
     : QObject(parent)
     , m_themes(themes)
+    , m_presentation(presentation)
     , m_window(window)
 {
     m_updateTimer.setSingleShot(true);
@@ -80,13 +85,23 @@ WindowShapeController::WindowShapeController(
         this, &WindowShapeController::applyShape);
     connect(&m_themes, &ThemeManager::themeChanged,
         this, &WindowShapeController::scheduleUpdate);
+    connect(&m_presentation, &WindowPresentationController::modeChanged,
+        this, [this] {
+            // A presentation change can also resize the native window. Drop the
+            // previous mask immediately so it cannot clip the transition frame.
+            m_window.setMask({});
+            scheduleUpdate();
+        });
     connect(&m_window, &QQuickWindow::widthChanged,
         this, &WindowShapeController::scheduleUpdate);
     connect(&m_window, &QQuickWindow::heightChanged,
         this, &WindowShapeController::scheduleUpdate);
     connect(&m_window, &QQuickWindow::devicePixelRatioChanged,
         this, &WindowShapeController::scheduleUpdate);
-    scheduleUpdate();
+    // Main.qml applies the persisted startup geometry before engine.load()
+    // returns. Apply the matching input mask before the initially hidden window
+    // is shown to avoid a rectangular first frame on shaped themes.
+    applyShape();
 }
 
 void WindowShapeController::scheduleUpdate()
@@ -96,11 +111,17 @@ void WindowShapeController::scheduleUpdate()
 
 void WindowShapeController::applyShape()
 {
-    if (!m_themes.backgroundImageShapesWindow()) {
+    const auto miniPlayer = m_presentation.isMiniPlayer();
+    const auto shapesWindow = miniPlayer
+        ? m_themes.miniBackgroundImageShapesWindow()
+        : m_themes.backgroundImageShapesWindow();
+    if (!shapesWindow) {
         m_window.setMask({});
         return;
     }
-    const auto source = m_themes.backgroundImageSource();
+    const auto source = miniPlayer
+        ? m_themes.miniBackgroundImageSource()
+        : m_themes.backgroundImageSource();
     const auto windowSize = m_window.size();
     if (!source.isLocalFile() || windowSize.isEmpty()) {
         m_window.setMask({});
@@ -114,8 +135,13 @@ void WindowShapeController::applyShape()
         m_window.setMask({});
         return;
     }
-    const auto imageSize = renderedSize(
-        sourceSize, windowSize, m_themes.backgroundImageFit());
+    const auto fit = miniPlayer
+        ? m_themes.miniBackgroundImageFit()
+        : m_themes.backgroundImageFit();
+    const auto alignment = miniPlayer
+        ? m_themes.miniBackgroundImageAlignment()
+        : m_themes.backgroundImageAlignment();
+    const auto imageSize = renderedSize(sourceSize, windowSize, fit);
     reader.setScaledSize(imageSize);
     const auto image = reader.read();
     if (image.isNull()) {
@@ -128,8 +154,7 @@ void WindowShapeController::applyShape()
     canvas.fill(Qt::transparent);
     QPainter painter{&canvas};
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
-    painter.drawImage(alignedTopLeft(imageSize, windowSize,
-        m_themes.backgroundImageAlignment()), image);
+    painter.drawImage(alignedTopLeft(imageSize, windowSize, alignment), image);
     painter.end();
 
     const auto region = alphaRegion(canvas);

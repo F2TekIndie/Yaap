@@ -337,13 +337,22 @@ if(YAAP_BUILD_APP)
     src/app/RadioBrowserDirectoryModel.hpp
     src/app/WindowShapeController.cpp
     src/app/WindowShapeController.hpp
+    src/app/WindowPresentationController.cpp
+    src/app/WindowPresentationController.hpp
   )
 
   qt_add_qml_module(
     yaap_app
     URI Yaap.App
     VERSION 1.0
-    QML_FILES qml/Yaap/App/Main.qml
+    QML_FILES
+      qml/Yaap/App/Main.qml
+      qml/Yaap/App/WindowChrome.qml
+      qml/Yaap/App/FullPlayerView.qml
+      qml/Yaap/App/MiniPlayerView.qml
+    RESOURCES
+      qml/Yaap/App/icons/miniplayer.svg
+      qml/Yaap/App/icons/restore.svg
   )
 
   set_target_properties(
@@ -490,6 +499,8 @@ if(BUILD_TESTING)
     src/app/PlayerController.hpp
     src/app/RadioController.cpp
     src/app/RadioController.hpp
+    src/app/WindowPresentationController.cpp
+    src/app/WindowPresentationController.hpp
     tests/TestMain.cpp
     tests/AudioAnalysisTests.cpp
     tests/FFmpegDecoderTests.cpp
@@ -505,6 +516,7 @@ if(BUILD_TESTING)
     tests/ProviderPlatformTests.cpp
     tests/ProviderProtocolTests.cpp
     tests/RadioTests.cpp
+    tests/WindowPresentationControllerTests.cpp
   )
   target_link_libraries(
     yaap_tests

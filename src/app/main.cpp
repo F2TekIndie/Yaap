@@ -3,6 +3,7 @@
 #include "app/LibraryController.hpp"
 #include "app/RadioController.hpp"
 #include "app/RadioBrowserDirectoryModel.hpp"
+#include "app/WindowPresentationController.hpp"
 #include "app/WindowShapeController.hpp"
 #include "library/LibraryDatabase.hpp"
 #include "library/LibraryIndexer.hpp"
@@ -87,6 +88,7 @@ int main(int argc, char* argv[])
 
     yaap::PermissionStore permissions;
     yaap::ThemeManager themes;
+    yaap::WindowPresentationController presentation;
     yaap::ExtensionRegistry extensions{permissions};
     yaap::ModApiInfo modApi;
     yaap::ModManager mods{permissions, themes, extensions,
@@ -124,6 +126,7 @@ int main(int argc, char* argv[])
         "Yaap.ModApi", 1, 0, "ProviderExtensions", &providerExtensions);
     qmlRegisterSingletonInstance("Yaap.App", 1, 0, "Providers", &providerGateway);
     qmlRegisterSingletonInstance("Yaap.App", 1, 0, "ProviderAccounts", &providerAccounts);
+    qmlRegisterSingletonInstance("Yaap.App", 1, 0, "Presentation", &presentation);
 
     QQmlApplicationEngine engine;
     QObject::connect(
@@ -139,7 +142,10 @@ int main(int argc, char* argv[])
         qCritical() << "Yaap root object is not a QQuickWindow.";
         return EXIT_FAILURE;
     }
-    yaap::WindowShapeController windowShape{themes, *window};
+    yaap::WindowShapeController windowShape{themes, presentation, *window};
+    // Main.qml starts hidden so the persisted mode, geometry, and shaped input
+    // mask can be applied before the first visible frame.
+    window->show();
 
     // The frameless dialogs are persistent top-level QML windows. Once one has
     // been shown, relying on quitOnLastWindowClosed would leave the process

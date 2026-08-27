@@ -74,6 +74,20 @@ windows so the main skin's native mask does not clip them. Each dialog has a
 host-defined initial size and persists its resized width and height through the
 application settings.
 
+The optional `miniPlayer` object styles the host-owned compact presentation. Its
+`size` is currently fixed to 480 by 112 logical pixels. `layout.controlArea` uses
+the same four inset names as the normal layout; `layout.windowControls` accepts
+`rightInset`, `topInset`, `buttonWidth`, `buttonHeight`, and `spacing` for the
+restore and close pair. `background.image` accepts the same image fields as the
+normal background and can independently set `windowShape`. All compact content
+and both window controls must remain inside an opaque shaped-image region.
+
+Miniplayer effects are intentionally unsupported: the host disables the full
+player's waves, spectrum, and paper-plane renderers while compact. A theme must
+omit `miniPlayer.background.effect` or set it to `none`; any other value rejects
+the theme. This keeps compact rendering quiet and bounded while still permitting
+a static PNG or SVG silhouette.
+
 API 1.1
 adds the host-owned
 `spectrum` background effect. A theme may configure 8–48 columns,
@@ -110,6 +124,33 @@ still execute no code.
     "topInset": 48,
     "width": 44,
     "height": 36
+  }
+},
+"miniPlayer": {
+  "size": {"width": 480, "height": 112},
+  "layout": {
+    "controlArea": {
+      "leftInset": 16,
+      "topInset": 8,
+      "rightInset": 96,
+      "bottomInset": 8
+    },
+    "windowControls": {
+      "rightInset": 8,
+      "topInset": 8,
+      "buttonWidth": 36,
+      "buttonHeight": 32,
+      "spacing": 4
+    }
+  },
+  "background": {
+    "image": {
+      "asset": "assets/miniplayer.svg",
+      "fit": "stretch",
+      "alignment": "center",
+      "opacity": 1.0,
+      "windowShape": true
+    }
   }
 }
 ```

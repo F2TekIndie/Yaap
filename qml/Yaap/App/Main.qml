@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import QtQuick.Window
 import Yaap.App 1.0
 import Yaap.ModApi 1.0
 import Yaap.Ui 1.0
@@ -14,12 +15,14 @@ ApplicationWindow {
     // and ownership are centralized.
     property int framelessModalDepth: 0
     property bool applicationClosing: false
+    property bool presentationTransitioning: false
+    property bool presentationInitialized: false
 
     width: 900
     height: 560
     minimumWidth: 680
     minimumHeight: 420
-    visible: true
+    visible: false
     flags: Qt.Window | Qt.FramelessWindowHint
     title: "Yaap — Music player prototype"
     color: "transparent"
@@ -33,6 +36,107 @@ ApplicationWindow {
     palette.highlight: Theme.accent
     palette.highlightedText: Theme.windowBottom
     palette.placeholderText: Theme.secondaryText
+
+    function currentAvailableGeometry() {
+        return Presentation.availableGeometryForWindow(
+            Qt.rect(root.x, root.y, root.width, root.height))
+    }
+
+    function applyWindowGeometry(geometry) {
+        root.x = geometry.x
+        root.y = geometry.y
+        root.width = geometry.width
+        root.height = geometry.height
+    }
+
+    function applyPresentationConstraints(miniPlayer) {
+        if (miniPlayer) {
+            root.minimumWidth = Theme.miniPlayerWidth
+            root.minimumHeight = Theme.miniPlayerHeight
+            root.maximumWidth = Theme.miniPlayerWidth
+            root.maximumHeight = Theme.miniPlayerHeight
+        } else {
+            root.maximumWidth = 16777215
+            root.maximumHeight = 16777215
+            root.minimumWidth = 680
+            root.minimumHeight = 420
+        }
+    }
+
+    function enterMiniPlayer() {
+        if (presentationTransitioning || Presentation.miniPlayer)
+            return
+
+        presentationTransitioning = true
+        const available = currentAvailableGeometry()
+        const normalGeometry = Qt.rect(root.x, root.y, root.width, root.height)
+        Presentation.enterMiniPlayer(normalGeometry, available)
+        applyPresentationConstraints(true)
+        applyWindowGeometry(Presentation.miniPlayerGeometryFor(available))
+        presentationTransitioning = false
+        Qt.callLater(function() { miniPlayerView.focusTransport() })
+    }
+
+    function restoreFullPlayer() {
+        if (presentationTransitioning || !Presentation.miniPlayer)
+            return
+
+        presentationTransitioning = true
+        const geometry = Presentation.normalGeometryFor(currentAvailableGeometry())
+        Presentation.restoreFullPlayer()
+        applyPresentationConstraints(false)
+        applyWindowGeometry(geometry)
+        presentationTransitioning = false
+        Qt.callLater(function() { fullPlayerView.focusTransport() })
+    }
+
+    function savePresentationGeometry() {
+        if (!presentationInitialized || presentationTransitioning)
+            return
+        const available = currentAvailableGeometry()
+        if (Presentation.miniPlayer) {
+            Presentation.recordMiniPlayerPosition(Qt.point(root.x, root.y), available)
+        } else {
+            Presentation.recordNormalGeometry(
+                Qt.rect(root.x, root.y, root.width, root.height), available)
+        }
+    }
+
+    function reclampPresentationGeometry() {
+        if (!presentationInitialized || presentationTransitioning)
+            return
+        savePresentationGeometry()
+        const geometry = Presentation.miniPlayer
+            ? Presentation.miniPlayerGeometryFor(currentAvailableGeometry())
+            : Presentation.normalGeometryFor(currentAvailableGeometry())
+        presentationTransitioning = true
+        applyWindowGeometry(geometry)
+        presentationTransitioning = false
+    }
+
+    Component.onCompleted: {
+        applyPresentationConstraints(Presentation.miniPlayer)
+        applyWindowGeometry(Presentation.initialGeometry)
+        presentationInitialized = true
+    }
+
+    onXChanged: if (presentationInitialized && !presentationTransitioning)
+        geometrySaveTimer.restart()
+    onYChanged: if (presentationInitialized && !presentationTransitioning)
+        geometrySaveTimer.restart()
+    onWidthChanged: if (presentationInitialized && !presentationTransitioning)
+        geometrySaveTimer.restart()
+    onHeightChanged: if (presentationInitialized && !presentationTransitioning)
+        geometrySaveTimer.restart()
+    onScreenChanged: Qt.callLater(reclampPresentationGeometry)
+    onClosing: savePresentationGeometry()
+
+    Timer {
+        id: geometrySaveTimer
+        interval: 350
+        repeat: false
+        onTriggered: root.savePresentationGeometry()
+    }
 
     function formatTime(milliseconds) {
         const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -845,37 +949,44 @@ ApplicationWindow {
         anchors.fill: parent
         enabled: false
         visible: source.toString().length > 0
-        source: Theme.backgroundImageSource
-        opacity: Theme.backgroundImageOpacity
+        source: Presentation.miniPlayer
+            ? Theme.miniBackgroundImageSource : Theme.backgroundImageSource
+        opacity: Presentation.miniPlayer
+            ? Theme.miniBackgroundImageOpacity : Theme.backgroundImageOpacity
         asynchronous: true
         cache: true
         smooth: true
         mipmap: true
-        fillMode: Theme.backgroundImageFit === "stretch"
+        fillMode: (Presentation.miniPlayer
+                ? Theme.miniBackgroundImageFit : Theme.backgroundImageFit) === "stretch"
             ? Image.Stretch
-            : Theme.backgroundImageFit === "preserveAspectCrop"
+            : (Presentation.miniPlayer
+                    ? Theme.miniBackgroundImageFit : Theme.backgroundImageFit)
+                    === "preserveAspectCrop"
                 ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-        horizontalAlignment: Theme.backgroundImageAlignment === "left"
-                || Theme.backgroundImageAlignment === "top-left"
-                || Theme.backgroundImageAlignment === "bottom-left"
+        readonly property string imageAlignment: Presentation.miniPlayer
+            ? Theme.miniBackgroundImageAlignment : Theme.backgroundImageAlignment
+        horizontalAlignment: imageAlignment === "left"
+                || imageAlignment === "top-left"
+                || imageAlignment === "bottom-left"
             ? Image.AlignLeft
-            : Theme.backgroundImageAlignment === "right"
-                    || Theme.backgroundImageAlignment === "top-right"
-                    || Theme.backgroundImageAlignment === "bottom-right"
+            : imageAlignment === "right"
+                    || imageAlignment === "top-right"
+                    || imageAlignment === "bottom-right"
                 ? Image.AlignRight : Image.AlignHCenter
-        verticalAlignment: Theme.backgroundImageAlignment === "top"
-                || Theme.backgroundImageAlignment === "top-left"
-                || Theme.backgroundImageAlignment === "top-right"
+        verticalAlignment: imageAlignment === "top"
+                || imageAlignment === "top-left"
+                || imageAlignment === "top-right"
             ? Image.AlignTop
-            : Theme.backgroundImageAlignment === "bottom"
-                    || Theme.backgroundImageAlignment === "bottom-left"
-                    || Theme.backgroundImageAlignment === "bottom-right"
+            : imageAlignment === "bottom"
+                    || imageAlignment === "bottom-left"
+                    || imageAlignment === "bottom-right"
                 ? Image.AlignBottom : Image.AlignVCenter
     }
 
     Loader {
         anchors.fill: parent
-        active: Theme.backgroundEffect === "waves"
+        active: !Presentation.miniPlayer && Theme.backgroundEffect === "waves"
         sourceComponent: Component {
             AnimatedWaveBackground {
                 anchors.fill: parent
@@ -885,7 +996,7 @@ ApplicationWindow {
 
     Loader {
         anchors.fill: parent
-        active: Theme.backgroundEffect === "spectrum"
+        active: !Presentation.miniPlayer && Theme.backgroundEffect === "spectrum"
         sourceComponent: Component {
             SpectrumBackground {
                 anchors.fill: parent
@@ -895,7 +1006,7 @@ ApplicationWindow {
 
     Loader {
         anchors.fill: parent
-        active: Theme.backgroundEffect === "paperPlanes"
+        active: !Presentation.miniPlayer && Theme.backgroundEffect === "paperPlanes"
         sourceComponent: Component {
             AnimatedPaperPlaneBackground {
                 anchors.fill: parent
@@ -903,206 +1014,50 @@ ApplicationWindow {
         }
     }
 
-    Item {
-        id: windowChrome
-
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: Math.max(36, Theme.closeButtonTopInset + Theme.closeButtonHeight)
-        z: 10
-
-        MouseArea {
-            anchors.left: parent.left
-            anchors.right: closeButton.left
-            anchors.top: parent.top
-            height: 36
-            acceptedButtons: Qt.LeftButton
-            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
-            onPressed: root.startSystemMove()
-        }
-
-        ToolButton {
-            id: closeButton
-
-            anchors.right: parent.right
-            anchors.rightMargin: Theme.closeButtonRightInset
-            anchors.top: parent.top
-            anchors.topMargin: Theme.closeButtonTopInset
-            width: Theme.closeButtonWidth
-            height: Theme.closeButtonHeight
-            text: "×"
-            flat: true
-            font.pixelSize: 20
-            Accessible.name: "Close Yaap"
-            ToolTip.visible: hovered
-            ToolTip.text: "Close"
-            onClicked: root.close()
-
-            background: Rectangle {
-                color: closeButton.down
-                    ? Qt.darker(Theme.error, 1.15)
-                    : closeButton.hovered ? Theme.error : "transparent"
-            }
-        }
+    MouseArea {
+        // Keep this behind the presentation views. Their buttons, sliders, and
+        // extension controls receive input first; any genuinely unused visual
+        // area falls through to this native window-drag surface.
+        anchors.fill: parent
+        enabled: root.framelessModalDepth === 0
+        acceptedButtons: Qt.LeftButton
+        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
+        onPressed: root.startSystemMove()
     }
 
-    ColumnLayout {
+    WindowChrome {
+        anchors.fill: parent
+        z: 10
+        hostWindow: root
+        miniPlayer: Presentation.miniPlayer
+        onCloseRequested: root.close()
+    }
+
+    FullPlayerView {
+        id: fullPlayerView
         anchors.fill: parent
         anchors.leftMargin: Theme.controlAreaLeftInset
         anchors.rightMargin: Theme.controlAreaRightInset
         anchors.topMargin: Theme.controlAreaTopInset
         anchors.bottomMargin: Theme.controlAreaBottomInset
-        spacing: Theme.spacing
+        visible: !Presentation.miniPlayer
+        enabled: visible
+        hostWindow: root
+        onProvidersRequested: providersDialog.open()
+        onAccountsRequested: accountsDialog.open()
+        onLibraryRequested: libraryDialog.open()
+        onRadioRequested: radioDialog.open()
+        onModsRequested: modsDialog.open()
+        onFileRequested: fileDialog.open()
+        onStreamRequested: streamDialog.open()
+        onFolderRequested: folderDialog.open()
+    }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Item {
-                id: windowDragArea
-
-                Layout.fillWidth: true
-                Layout.preferredHeight: 40
-                Layout.minimumWidth: 72
-
-                Label {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "YAAP"
-                    color: Theme.accent
-                    font.pixelSize: 15
-                    font.bold: true
-                    font.letterSpacing: 3
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton
-                    cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
-                    onPressed: root.startSystemMove()
-                }
-            }
-            Button {
-                text: "Providers (" + Providers.availableProviderCount + ")"
-                onClicked: providersDialog.open()
-            }
-            Button {
-                text: "Accounts (" + ProviderAccounts.count + ")"
-                onClicked: accountsDialog.open()
-            }
-            Button { text: "Library"; onClicked: libraryDialog.open() }
-            Button { text: "Radio (" + Radio.count + ")"; onClicked: radioDialog.open() }
-            Button { text: "Mods"; onClicked: modsDialog.open() }
-            Label { text: Player.stateName; color: Theme.secondaryText }
-        }
-
-        ExtensionHost {
-            slotId: "navigation.primary"
-            Layout.fillWidth: true
-        }
-
-        Item { Layout.fillHeight: true }
-
-        Label {
-            id: nowPlayingTitle
-            Layout.fillWidth: true
-            text: Player.hasNowPlayingMetadata
-                ? (Player.nowPlayingTitle.length > 0
-                    ? Player.nowPlayingTitle : Player.nowPlayingText)
-                : Player.title
-            color: Theme.primaryText
-            font.pixelSize: 30
-            font.weight: Font.DemiBold
-            horizontalAlignment: Text.AlignHCenter
-            elide: Text.ElideMiddle
-
-            HoverHandler { id: nowPlayingTitleHover }
-            ToolTip {
-                visible: nowPlayingTitleHover.hovered && nowPlayingTitle.truncated
-                text: nowPlayingTitle.text
-                delay: 400
-            }
-        }
-
-        Label {
-            Layout.fillWidth: true
-            visible: Player.hasNowPlayingMetadata
-            text: [Player.nowPlayingArtist, Player.stationTitle]
-                .filter(value => value.length > 0).join(" · ")
-                + (Player.nowPlayingMetadataStale ? " · reconnecting" : "")
-            color: Theme.secondaryText
-            horizontalAlignment: Text.AlignHCenter
-            elide: Text.ElideMiddle
-        }
-
-        ExtensionHost {
-            slotId: "nowPlaying.aboveTransport"
-            Layout.fillWidth: true
-        }
-
-        Label {
-            Layout.fillWidth: true
-            visible: Player.errorMessage.length > 0
-            text: Player.errorMessage
-            color: Theme.error
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-        }
-
-        BusyIndicator {
-            Layout.alignment: Qt.AlignHCenter
-            running: Player.isLoading || Player.isBuffering
-            visible: running
-        }
-
-        Slider {
-            id: seekSlider
-            Layout.fillWidth: true
-            from: 0
-            to: Math.max(1, Player.durationMilliseconds)
-            enabled: Player.hasAudio && Player.durationMilliseconds > 0
-            onPressedChanged: if (!pressed) Player.seek(Math.round(value))
-            Binding on value {
-                when: !seekSlider.pressed
-                value: Player.positionMilliseconds
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Label { text: root.formatTime(Player.positionMilliseconds); color: Theme.secondaryText }
-            Item { Layout.fillWidth: true }
-            Label { text: root.formatTime(Player.durationMilliseconds); color: Theme.secondaryText }
-        }
-
-        RowLayout {
-            Layout.alignment: Qt.AlignHCenter
-            spacing: Theme.spacing
-            Button { text: "Open file"; enabled: !Player.isLoading; onClicked: fileDialog.open() }
-            Button { text: "Open stream"; enabled: !Player.isLoading; onClicked: streamDialog.open() }
-            Button {
-                text: MusicLibrary.scanning ? "Scanning…" : "Add library (" + MusicLibrary.trackCount + ")"
-                enabled: !MusicLibrary.scanning
-                onClicked: folderDialog.open()
-            }
-            Button {
-                text: Player.isPlaying ? "Pause" : "Play"
-                enabled: Player.hasAudio
-                onClicked: Player.isPlaying ? Player.pause() : Player.play()
-            }
-            Button { text: "Stop"; enabled: Player.hasAudio; onClicked: Player.stop() }
-        }
-
-        ExtensionHost {
-            slotId: "nowPlaying.toolbar.after"
-            Layout.fillWidth: true
-        }
-
-        Item { Layout.fillHeight: true }
-        Label {
-            Layout.fillWidth: true
-            text: "Extension API " + ModApi.version + " · FFmpeg → bounded PCM stream → miniaudio"
-            color: Theme.secondaryText
-            horizontalAlignment: Text.AlignHCenter
-        }
+    MiniPlayerView {
+        id: miniPlayerView
+        anchors.fill: parent
+        visible: Presentation.miniPlayer
+        enabled: visible
+        hostWindow: root
     }
 }
