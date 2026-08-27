@@ -4,9 +4,9 @@ Yaap is currently pre-release software. Small fixes and focused improvements are
 welcome. Please discuss substantial behavior, architecture, provider API, or UI
 modding changes before investing in an implementation.
 
-The repository does not yet have a project license. Contact the repository owner
-before contributing code, and do not assume that dependency licenses grant rights
-to Yaap itself.
+Yaap is licensed under `LGPL-3.0-only`. Unless separately agreed in writing,
+contributions are submitted under that same project license. Dependency licenses
+remain separate from Yaap's license.
 
 ## Development setup
 
@@ -49,11 +49,9 @@ theme changes. Keep generated files, local settings, test databases, credentials
 and unrelated formatting changes out of the patch.
 
 By submitting a pull request, you confirm that you have the right to contribute
-its contents. A project contribution license will need to be documented when the
-repository owner selects Yaap's license.
+its contents and license them under Yaap's `LGPL-3.0-only` project license.
 
 ## Security issues
 
 Do not open a public issue for a suspected vulnerability or include credentials in
 logs. Follow [SECURITY.md](SECURITY.md) instead.
-

@@ -1,5 +1,8 @@
 # Third-party notices
 
+Yaap itself is licensed under `LGPL-3.0-only`; see `LICENSE`. The licenses below
+apply to their respective third-party components.
+
 Yaap links or distributes the following third-party components. Release builds
 must replace version ranges with the exact resolved versions and append their
 license texts to the package.

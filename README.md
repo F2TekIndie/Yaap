@@ -160,10 +160,10 @@ controls.
 
 ## Licensing
 
-The repository owner must choose and add the project's own `LICENSE` before
-advertising the repository as open source or accepting code under a stated
-open-source license. No project license is inferred from the licenses of its
-dependencies.
+Yaap is licensed under the
+[GNU Lesser General Public License version 3 only](LICENSE), identified by the
+SPDX expression `LGPL-3.0-only`. Dependency licenses remain separate from the
+Yaap project license.
 
 Commercial distribution must use an LGPL-compatible FFmpeg build without GPL
 or nonfree components, retain the applicable build configuration and

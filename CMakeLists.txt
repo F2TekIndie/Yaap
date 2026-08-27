@@ -474,7 +474,7 @@ else()
 endif()
 install(DIRECTORY docs/ DESTINATION share/Yaap/docs)
 install(DIRECTORY sdk/schemas sdk/templates DESTINATION share/Yaap/sdk)
-install(FILES THIRD_PARTY_NOTICES.md sbom.spdx.json DESTINATION share/Yaap)
+install(FILES LICENSE THIRD_PARTY_NOTICES.md sbom.spdx.json DESTINATION share/Yaap)
 
 add_custom_target(
   yaap_release_gate
@@ -490,7 +490,7 @@ set(CPACK_PACKAGE_VENDOR "Yaap")
 set(CPACK_PACKAGE_NAME "Yaap")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_FILE_NAME "Yaap-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 if(WIN32)
   set(CPACK_GENERATOR "ZIP" CACHE STRING "CPack package generators")
 elseif(APPLE)

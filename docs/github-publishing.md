@@ -5,8 +5,8 @@ data, credentials, local dependency trees, or packaged distributions.
 
 ## Before the first push
 
-1. Choose and add Yaap's project `LICENSE`. Dependency licenses do not license the
-   application itself.
+1. Confirm that the `LGPL-3.0-only` project license in `LICENSE` matches the
+   intended publication terms. Dependency licenses remain separate.
 2. Review the complete change set with `git status` and `git diff`.
 3. Run `git diff --check`, the appropriate build/test preset, and the
    `yaap_release_gate` target.
@@ -42,4 +42,3 @@ variants.
 
 CI builds and tests Windows, Linux, and macOS, also runs a Linux sanitizer job,
 validates release metadata, stages an installation, and uploads generated packages.
-

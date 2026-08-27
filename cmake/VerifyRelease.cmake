@@ -1,4 +1,5 @@
 foreach(_required_file IN ITEMS
+    "${YAAP_SOURCE_DIR}/LICENSE"
     "${YAAP_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
     "${YAAP_SOURCE_DIR}/sbom.spdx.json"
     "${YAAP_SOURCE_DIR}/docs/extension-api-policy.md"

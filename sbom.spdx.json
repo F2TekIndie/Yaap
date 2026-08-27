@@ -9,7 +9,7 @@
     "creators": ["Tool: Yaap-CMake-release-gate"]
   },
   "packages": [
-    {"name": "Yaap", "SPDXID": "SPDXRef-Package-Yaap", "versionInfo": "0.2.0", "downloadLocation": "NOASSERTION", "filesAnalyzed": false, "licenseConcluded": "NOASSERTION"},
+    {"name": "Yaap", "SPDXID": "SPDXRef-Package-Yaap", "versionInfo": "0.2.0", "downloadLocation": "NOASSERTION", "filesAnalyzed": false, "licenseConcluded": "LGPL-3.0-only", "licenseDeclared": "LGPL-3.0-only"},
     {"name": "Qt", "SPDXID": "SPDXRef-Package-Qt", "versionInfo": ">=6.5", "downloadLocation": "https://www.qt.io/", "filesAnalyzed": false, "licenseConcluded": "NOASSERTION"},
     {"name": "FFmpeg", "SPDXID": "SPDXRef-Package-FFmpeg", "versionInfo": "NOASSERTION", "downloadLocation": "https://ffmpeg.org/", "filesAnalyzed": false, "licenseConcluded": "NOASSERTION"},
     {"name": "miniaudio", "SPDXID": "SPDXRef-Package-miniaudio", "versionInfo": "NOASSERTION", "downloadLocation": "https://miniaud.io/", "filesAnalyzed": false, "licenseConcluded": "MIT-0"},
