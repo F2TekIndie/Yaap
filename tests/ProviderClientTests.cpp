@@ -31,4 +31,14 @@ TEST_CASE("Jellyfin item response maps audio items to domain tracks")
     CHECK(result.tracks.front().durationMilliseconds == 3'000);
 }
 
+TEST_CASE("Built-in provider parsers reject oversized response bodies")
+{
+    const QByteArray oversized(4 * 1024 * 1024 + 1, 'x');
+    QUrlQuery authentication;
+    CHECK_FALSE(OpenSubsonicClient::parseSearchResponse(
+        oversized, QUrl{"https://music.example"}, authentication).succeeded());
+    CHECK_FALSE(JellyfinClient::parseItemsResponse(
+        oversized, QUrl{"https://jellyfin.example"}, "token").succeeded());
+}
+
 } // namespace yaap

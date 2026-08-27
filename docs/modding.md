@@ -88,9 +88,8 @@ omit `miniPlayer.background.effect` or set it to `none`; any other value rejects
 the theme. This keeps compact rendering quiet and bounded while still permitting
 a static PNG or SVG silhouette.
 
-API 1.1
-adds the host-owned
-`spectrum` background effect. A theme may configure 8–48 columns,
+API 1.1 adds the host-owned `spectrum` background effect. A theme may configure
+8–48 columns,
 mirroring, opacity, and bounded attack/release durations through the optional
 `background.parameters` object. It may also provide validated `gradientStart`,
 `gradientMiddle`, and `gradientEnd` colors. A spectrum theme can opt into the
@@ -206,3 +205,5 @@ The sample packages under `samples/mods` demonstrate all three package kinds.
 Bundled theme examples include Ocean, the warm light Paper theme, neon
 Synthwave, and a deliberately square High Contrast theme. They are copied into
 the runnable development distribution and can be enabled from the Mods dialog.
+The [README theme gallery](../README.md#sample-themes) shows captures from the
+actual Release application rather than design mockups.

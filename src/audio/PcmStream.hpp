@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <stop_token>
 
 namespace yaap {
 
@@ -22,6 +23,8 @@ public:
     PcmStream& operator=(PcmStream&&) = delete;
 
     [[nodiscard]] std::size_t write(std::span<const float> interleavedSamples) noexcept;
+    [[nodiscard]] bool waitForWritableFrames(std::stop_token stopToken) noexcept;
+    void interruptProducerWait() noexcept;
     [[nodiscard]] std::size_t render(
         std::span<float> output,
         std::size_t requestedFrames) noexcept;
@@ -53,6 +56,7 @@ private:
     std::atomic<bool> m_hasAudio{false};
     std::atomic<bool> m_playing{false};
     std::atomic<bool> m_endOfStream{false};
+    std::atomic<std::uint64_t> m_spaceGeneration{0};
 };
 
 } // namespace yaap

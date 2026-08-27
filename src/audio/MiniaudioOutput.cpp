@@ -3,6 +3,7 @@
 #include "audio/AudioAnalysisEngine.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <span>
 #include <utility>
 
@@ -23,6 +24,8 @@ struct MiniaudioOutput::Impl final {
     ma_device device{};
     std::shared_ptr<PcmStream> stream;
     AudioAnalysisEngine* analysisEngine{};
+    std::atomic<float> volume{0.8F};
+    std::atomic<bool> muted{};
     bool initialized{};
 
     explicit Impl(AudioAnalysisEngine* analysisEngineValue)
@@ -45,6 +48,13 @@ struct MiniaudioOutput::Impl final {
                 outputSamples, static_cast<std::size_t>(frameCount));
         } else {
             std::fill(outputSamples.begin(), outputSamples.end(), 0.0F);
+        }
+        const auto gain = self->muted.load(std::memory_order_relaxed)
+            ? 0.0F : self->volume.load(std::memory_order_relaxed);
+        if (gain != 1.0F) {
+            for (auto& sample : outputSamples) {
+                sample *= gain;
+            }
         }
         if (self->analysisEngine != nullptr) {
             self->analysisEngine->submitInterleaved(outputSamples);
@@ -161,6 +171,16 @@ void MiniaudioOutput::clear() noexcept
     }
 }
 
+void MiniaudioOutput::setVolume(const float volume) noexcept
+{
+    m_impl->volume.store(std::clamp(volume, 0.0F, 1.0F), std::memory_order_relaxed);
+}
+
+void MiniaudioOutput::setMuted(const bool muted) noexcept
+{
+    m_impl->muted.store(muted, std::memory_order_relaxed);
+}
+
 bool MiniaudioOutput::hasAudio() const noexcept
 {
     return m_impl->stream && m_impl->stream->hasAudio();
@@ -199,6 +219,16 @@ std::int64_t MiniaudioOutput::positionMilliseconds() const noexcept
 std::int64_t MiniaudioOutput::durationMilliseconds() const noexcept
 {
     return m_impl->stream ? m_impl->stream->durationMilliseconds() : 0;
+}
+
+float MiniaudioOutput::volume() const noexcept
+{
+    return m_impl->volume.load(std::memory_order_relaxed);
+}
+
+bool MiniaudioOutput::isMuted() const noexcept
+{
+    return m_impl->muted.load(std::memory_order_relaxed);
 }
 
 } // namespace yaap

@@ -41,6 +41,8 @@ class PlayerController final : public QObject {
     Q_PROPERTY(bool isPlaying READ isPlaying NOTIFY controlsChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY controlsChanged)
     Q_PROPERTY(bool isBuffering READ isBuffering NOTIFY controlsChanged)
+    Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    Q_PROPERTY(bool muted READ muted WRITE setMuted NOTIFY volumeChanged)
 
 public:
     explicit PlayerController(QObject* parent = nullptr);
@@ -67,6 +69,8 @@ public:
     [[nodiscard]] bool isPlaying() const noexcept;
     [[nodiscard]] bool isLoading() const noexcept;
     [[nodiscard]] bool isBuffering() const noexcept;
+    [[nodiscard]] qreal volume() const noexcept;
+    [[nodiscard]] bool muted() const noexcept;
 
     Q_INVOKABLE void openFile(const QUrl& url);
     Q_INVOKABLE void openStream(const QUrl& url, const QString& title = {});
@@ -75,6 +79,9 @@ public:
     Q_INVOKABLE void pause();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void seek(qint64 positionMilliseconds);
+    Q_INVOKABLE void setVolume(qreal volume);
+    Q_INVOKABLE void setMuted(bool muted);
+    Q_INVOKABLE void toggleMuted();
 
     // Stops real-time output and requests cancellation of background work.
     // Safe to call repeatedly during application shutdown.
@@ -88,6 +95,7 @@ signals:
     void positionChanged();
     void durationChanged();
     void controlsChanged();
+    void volumeChanged();
 
 private:
     PlayerController(AudioAnalysisEngine* analysisEngine, QObject* parent);
@@ -108,6 +116,7 @@ private:
     void setError(QString message);
     void updatePosition();
     void scheduleReconnect(QString reason);
+    [[nodiscard]] bool hasSource() const noexcept;
 
     PlaybackStateMachine m_stateMachine;
     MiniaudioOutput m_output;

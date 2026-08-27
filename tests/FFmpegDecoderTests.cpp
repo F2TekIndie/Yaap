@@ -177,6 +177,30 @@ TEST_CASE("FFmpeg streaming honours cancellation before opening input")
     REQUIRE_FALSE(result.succeeded());
 }
 
+TEST_CASE("FFmpeg cancellation wakes a producer blocked by a full PCM ring")
+{
+    TemporaryFile input{".wav"};
+    writeSilentWave(input.path());
+    yaap::PcmStream stream{8};
+    std::stop_source cancellation;
+    const yaap::FFmpegDecoder decoder;
+    auto decodeFuture = std::async(std::launch::async, [&] {
+        return decoder.streamFile(input.path(), stream, {}, {}, {},
+            cancellation.get_token());
+    });
+
+    const auto fillDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+    while (stream.bufferedFrames() < stream.capacityFrames()
+        && std::chrono::steady_clock::now() < fillDeadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{2});
+    }
+    REQUIRE(stream.bufferedFrames() == stream.capacityFrames());
+    cancellation.request_stop();
+    REQUIRE(decodeFuture.wait_for(std::chrono::milliseconds{500})
+        == std::future_status::ready);
+    REQUIRE(decodeFuture.get().cancelled);
+}
+
 TEST_CASE("FFmpeg streaming seeks before producing PCM")
 {
     TemporaryFile input{".wav"};

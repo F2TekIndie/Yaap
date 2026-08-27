@@ -6,7 +6,9 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
+#include <QFile>
 #include <QFileInfo>
+#include <QDateTime>
 #include <QSaveFile>
 #include <QSet>
 #include <QUrl>
@@ -15,9 +17,13 @@
 #include <algorithm>
 #include <filesystem>
 #include <utility>
+#include <unordered_map>
 
 namespace yaap {
 namespace {
+
+constexpr qsizetype maximumWatchedDirectories = 2'048;
+constexpr qsizetype maximumScanWarnings = 200;
 
 [[nodiscard]] bool isSupportedAudioFile(const QFileInfo& file)
 {
@@ -144,14 +150,27 @@ void LibraryIndexer::rescan()
     }
     const auto roots = m_folders;
     const auto cachePath = m_artworkCachePath;
-    m_scanWatcher.setFuture(QtConcurrent::run([roots, cachePath] {
-        return scanFolders(roots, cachePath);
+    QString error;
+    auto indexedTracks = m_database.indexedTracks(error);
+    if (!error.isEmpty()) {
+        emit scanFailed(error);
+        return;
+    }
+    std::unordered_map<std::string, LibraryIndexedTrack> previousTracks;
+    previousTracks.reserve(indexedTracks.size());
+    for (auto& indexedTrack : indexedTracks) {
+        previousTracks.emplace(indexedTrack.track.source, std::move(indexedTrack));
+    }
+    m_scanWatcher.setFuture(QtConcurrent::run(
+        [roots, cachePath, previousTracks = std::move(previousTracks)] {
+        return scanFolders(roots, cachePath, previousTracks);
     }));
 }
 
 LibraryScanBatch LibraryIndexer::scanFolders(
     const QStringList& roots,
-    const QString& artworkCachePath)
+    const QString& artworkCachePath,
+    const std::unordered_map<std::string, LibraryIndexedTrack>& previousTracks)
 {
     LibraryScanBatch batch;
     MediaMetadataReader metadataReader;
@@ -159,29 +178,55 @@ LibraryScanBatch LibraryIndexer::scanFolders(
     for (const auto& root : roots) {
         LibraryFolderScan folder{.rootPath = root};
         QSet<QString> watchedDirectories{root};
+        const QFileInfo rootInfo{root};
+        if (!rootInfo.exists() || !rootInfo.isDir() || !rootInfo.isReadable()) {
+            folder.complete = false;
+            batch.warnings.push_back(
+                "Library folder is unavailable; keeping its indexed tracks: " + root);
+            batch.folders.push_back(std::move(folder));
+            continue;
+        }
         QDirIterator iterator{root, QDir::Files, QDirIterator::Subdirectories};
         while (iterator.hasNext()) {
             iterator.next();
             const QFileInfo file = iterator.fileInfo();
-            watchedDirectories.insert(file.absolutePath());
             if (!isSupportedAudioFile(file)) {
                 continue;
             }
+            watchedDirectories.insert(file.absolutePath());
 
             const auto source = QUrl::fromLocalFile(file.absoluteFilePath())
                                     .toString(QUrl::FullyEncoded);
+            folder.observedSources.push_back(source);
+            const auto sourceKey = source.toStdString();
+            const auto previous = previousTracks.find(sourceKey);
+            const auto fileSize = file.size();
+            const auto modifiedMilliseconds = file.lastModified().toMSecsSinceEpoch();
+            if (previous != previousTracks.end()
+                && previous->second.fileSize == fileSize
+                && previous->second.modifiedMilliseconds == modifiedMilliseconds) {
+                folder.tracks.push_back(previous->second);
+                continue;
+            }
             const auto id = stableId(source);
             const auto metadataResult = metadataReader.read(
                 filesystemPath(file.absoluteFilePath()));
             if (!metadataResult.succeeded()) {
-                batch.warnings.push_back(
-                    file.absoluteFilePath() + ": " + QString::fromUtf8(metadataResult.error));
+                if (batch.warnings.size() < maximumScanWarnings) {
+                    batch.warnings.push_back(file.absoluteFilePath() + ": "
+                        + QString::fromUtf8(metadataResult.error));
+                }
+                // Preserve the prior row and its file-state timestamp so the
+                // next scan retries metadata instead of treating this as a deletion.
+                if (previous != previousTracks.end()) {
+                    folder.tracks.push_back(previous->second);
+                }
                 continue;
             }
 
             const auto artwork = storeArtwork(
                 artworkCachePath, id, metadataResult.metadata);
-            folder.tracks.push_back({
+            folder.tracks.push_back({{
                 .id = id.toStdString(),
                 .kind = TrackKind::LocalFile,
                 .providerId = "local",
@@ -192,9 +237,25 @@ LibraryScanBatch LibraryIndexer::scanFolders(
                 .artist = metadataResult.metadata.artist,
                 .album = metadataResult.metadata.album,
                 .artworkSource = artwork.toStdString(),
-                .durationMilliseconds = metadataResult.metadata.durationMilliseconds});
+                .durationMilliseconds = metadataResult.metadata.durationMilliseconds},
+                fileSize, modifiedMilliseconds});
         }
-        batch.watchedDirectories.append(watchedDirectories.values());
+        if (!QFileInfo{root}.exists()) {
+            folder.complete = false;
+            batch.warnings.push_back(
+                "Library folder became unavailable during its scan; keeping prior entries: " + root);
+        }
+        const auto availableWatchSlots = std::max<qsizetype>(
+            maximumWatchedDirectories - batch.watchedDirectories.size(), 0);
+        auto directories = watchedDirectories.values();
+        if (directories.size() > availableWatchSlots) {
+            directories = directories.mid(0, availableWatchSlots);
+            if (batch.warnings.size() < maximumScanWarnings) {
+                batch.warnings.push_back("Library watch limit reached; use Rescan for changes "
+                    "outside the first 2048 directories.");
+            }
+        }
+        batch.watchedDirectories.append(directories);
         batch.folders.push_back(std::move(folder));
     }
     batch.watchedDirectories.removeDuplicates();
@@ -203,12 +264,15 @@ LibraryScanBatch LibraryIndexer::scanFolders(
 
 void LibraryIndexer::applyScan()
 {
-    const auto batch = m_scanWatcher.result();
+    auto batch = m_scanWatcher.future().takeResult();
     int trackCount = 0;
+    bool synchronized = true;
     for (const auto& folder : batch.folders) {
         QString error;
-        if (!m_database.synchronizeFolder(folder.rootPath, folder.tracks, error)) {
+        if (!m_database.synchronizeFolder(folder.rootPath, folder.tracks,
+                folder.observedSources, folder.complete, error)) {
             emit scanFailed(error);
+            synchronized = false;
             continue;
         }
         trackCount += static_cast<int>(folder.tracks.size());
@@ -223,15 +287,41 @@ void LibraryIndexer::applyScan()
     }
     const auto failedWatches = m_watcher.addPaths(batch.watchedDirectories);
     if (!failedWatches.isEmpty()) {
-        // PROTOTYPE: Watch exhaustion falls back to manual/rescheduled full scans.
         emit scanWarning("Could not watch " + QString::number(failedWatches.size())
             + " library directories; rescans remain available.");
+    }
+    if (synchronized) {
+        pruneArtworkCache();
     }
     emit scanFinished(trackCount);
 
     if (m_rescanPending) {
         m_rescanPending = false;
         rescan();
+    }
+}
+
+void LibraryIndexer::pruneArtworkCache()
+{
+    QString error;
+    const auto artworkSources = m_database.artworkSources(error);
+    if (!error.isEmpty()) {
+        emit scanWarning(error);
+        return;
+    }
+    QSet<QString> referencedFiles;
+    for (const auto& source : artworkSources) {
+        const QUrl url{source};
+        if (url.isLocalFile()) {
+            referencedFiles.insert(QFileInfo{url.toLocalFile()}.absoluteFilePath());
+        }
+    }
+    const QDir cache{m_artworkCachePath};
+    for (const auto& file : cache.entryInfoList(QDir::Files | QDir::NoSymLinks)) {
+        if (!referencedFiles.contains(file.absoluteFilePath())
+            && !QFile::remove(file.absoluteFilePath())) {
+            emit scanWarning("Could not remove unreferenced artwork: " + file.absoluteFilePath());
+        }
     }
 }
 

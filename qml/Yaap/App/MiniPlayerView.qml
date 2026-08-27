@@ -102,29 +102,45 @@ Item {
             }
         }
 
-        ToolButton {
+        TransportButton {
             id: playPauseButton
             Layout.preferredWidth: 38
             Layout.preferredHeight: 38
             enabled: Player.hasAudio
-            text: Player.isPlaying ? "Ⅱ" : "▶"
-            font.pixelSize: 17
-            Accessible.name: Player.isPlaying ? "Pause" : "Play"
-            ToolTip.visible: hovered
-            ToolTip.text: Player.isPlaying ? "Pause" : "Play"
+            iconSource: Player.isPlaying
+                ? Qt.resolvedUrl("icons/pause.svg")
+                : Qt.resolvedUrl("icons/play.svg")
+            accessibleLabel: Player.isPlaying ? "Pause" : "Play"
             onClicked: Player.isPlaying ? Player.pause() : Player.play()
         }
 
-        ToolButton {
+        TransportButton {
             Layout.preferredWidth: 38
             Layout.preferredHeight: 38
             enabled: Player.hasAudio
-            text: "■"
-            font.pixelSize: 14
-            Accessible.name: "Stop"
-            ToolTip.visible: hovered
-            ToolTip.text: "Stop"
+            iconSource: Qt.resolvedUrl("icons/stop.svg")
+            accessibleLabel: "Stop"
             onClicked: Player.stop()
+        }
+
+        TransportButton {
+            Layout.preferredWidth: 34
+            Layout.preferredHeight: 34
+            iconSource: Player.muted || Player.volume <= 0
+                ? Qt.resolvedUrl("icons/mute.svg")
+                : Qt.resolvedUrl("icons/volume.svg")
+            accessibleLabel: Player.muted ? "Unmute" : "Mute"
+            onClicked: Player.toggleMuted()
+        }
+
+        Slider {
+            Layout.preferredWidth: 68
+            from: 0
+            to: 1
+            stepSize: 0.01
+            value: Player.volume
+            Accessible.name: "Volume"
+            onMoved: Player.volume = value
         }
     }
 }

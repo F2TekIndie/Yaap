@@ -232,6 +232,10 @@ StreamDecodeResult FFmpegDecoder::streamInput(
         return {.error = "No media source was selected."};
     }
 
+    // Wake a producer blocked on a full PCM ring as soon as cancellation is requested.
+    std::stop_callback stopWakeup{
+        stopToken, [&destination] { destination.interruptProducerWait(); }};
+
     InterruptState interruptState{stopToken, options.ioTimeout};
     AVFormatContext* rawFormatContext = avformat_alloc_context();
     if (rawFormatContext == nullptr) {
@@ -448,10 +452,9 @@ StreamDecodeResult FFmpegDecoder::streamInput(
 
             const auto writtenFrames = destination.write(samples);
             if (writtenFrames == 0) {
-                // PROTOTYPE: The bounded producer polls for capacity while full.
-                // Replace this with a producer-side semaphore/notification if
-                // profiling shows the one-millisecond interruptible wait matters.
-                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+                if (!destination.waitForWritableFrames(stopToken)) {
+                    return {.cancelled = true};
+                }
                 continue;
             }
 

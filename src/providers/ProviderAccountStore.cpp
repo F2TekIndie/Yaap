@@ -238,20 +238,9 @@ void ProviderAccountStore::searchAccount(
             callback({.error = std::move(error)});
             return;
         }
-        client->fetchTracks([client, query, callback = std::move(callback)](
+        client->search(query, [client, callback = std::move(callback)](
                                 ProviderTracksResult result) mutable {
             client->deleteLater();
-            if (result.succeeded() && !query.trimmed().isEmpty()) {
-                const auto needle = query.trimmed().toStdString();
-                std::erase_if(result.tracks, [&](const Track& track) {
-                    const auto matches = [&](const std::string& value) {
-                        return QString::fromStdString(value).contains(
-                            QString::fromStdString(needle), Qt::CaseInsensitive);
-                    };
-                    return !matches(track.title) && !matches(track.artist)
-                        && !matches(track.album);
-                });
-            }
             callback(std::move(result));
         });
     });

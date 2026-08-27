@@ -8,6 +8,30 @@
 #include <QEventLoop>
 #include <QThread>
 #include <QUrl>
+#include <QSettings>
+
+#include <catch2/catch_approx.hpp>
+
+TEST_CASE("Player volume and mute controls are bounded and observable")
+{
+    QSettings settings;
+    settings.remove("playback/volume");
+    settings.remove("playback/muted");
+    yaap::AudioAnalysisEngine analysis;
+    yaap::PlayerController player{analysis};
+
+    player.setVolume(2.0);
+    CHECK(player.volume() == Catch::Approx(1.0));
+    player.setVolume(0.35);
+    CHECK(player.volume() == Catch::Approx(0.35));
+    player.setMuted(true);
+    CHECK(player.muted());
+    player.toggleMuted();
+    CHECK_FALSE(player.muted());
+
+    settings.remove("playback/volume");
+    settings.remove("playback/muted");
+}
 
 TEST_CASE("Player controller starts an opted-in live radio stream",
     "[.audio-device][.live-radio]")

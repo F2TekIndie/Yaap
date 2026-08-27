@@ -367,6 +367,7 @@ ApplicationWindow {
                                 stepSize: 1
                                 Accessible.name: "Synthwave background hue shift"
                                 onMoved: Theme.spectrumHueShiftDegrees = value
+                                onPressedChanged: if (!pressed) Theme.commitSpectrumHueShift()
 
                                 Binding on value {
                                     when: !hueShiftSlider.pressed
@@ -1050,7 +1051,6 @@ ApplicationWindow {
         onModsRequested: modsDialog.open()
         onFileRequested: fileDialog.open()
         onStreamRequested: streamDialog.open()
-        onFolderRequested: folderDialog.open()
     }
 
     MiniPlayerView {

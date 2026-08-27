@@ -1,3 +1,10 @@
+if(DEFINED YAAP_DEPLOY_CONFIGURATION
+    AND NOT YAAP_DEPLOY_CONFIGURATION STREQUAL "Release")
+  message(STATUS
+    "Skipping runnable distribution for ${YAAP_DEPLOY_CONFIGURATION}; Release only")
+  return()
+endif()
+
 foreach(_required_variable IN ITEMS
     YAAP_APP_EXECUTABLE
     YAAP_SOURCE_RUNTIME_DIR
@@ -20,7 +27,7 @@ if(NOT EXISTS "${YAAP_WINDEPLOYQT}")
   message(FATAL_ERROR "windeployqt does not exist: ${YAAP_WINDEPLOYQT}")
 endif()
 
-# The per-configuration directory is intentionally rebuilt from scratch so a
+# The top-level Release directory is intentionally rebuilt from scratch so a
 # removed dependency cannot remain hidden by a stale DLL or Qt plugin.
 file(REMOVE_RECURSE "${YAAP_DISTRIBUTION_DIR}")
 file(MAKE_DIRECTORY "${YAAP_DISTRIBUTION_DIR}")
@@ -44,16 +51,10 @@ if(_runtime_dlls)
   file(COPY ${_runtime_dlls} DESTINATION "${YAAP_DISTRIBUTION_DIR}")
 endif()
 
-if(YAAP_DEPLOY_CONFIGURATION STREQUAL "Debug")
-  set(_qt_configuration_argument --debug)
-else()
-  set(_qt_configuration_argument --release)
-endif()
-
 execute_process(
   COMMAND
     "${YAAP_WINDEPLOYQT}"
-    "${_qt_configuration_argument}"
+    --release
     --dir "${YAAP_DISTRIBUTION_DIR}"
     --qmldir "${YAAP_QML_DIR}"
     --verbose 1

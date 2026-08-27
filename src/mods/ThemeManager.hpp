@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QString>
 #include <QUrl>
+#include <QTimer>
 
 namespace yaap {
 
@@ -121,9 +122,11 @@ public:
     [[nodiscard]] bool spectrumHueShiftAdjustable() const noexcept;
     [[nodiscard]] qreal spectrumHueShiftDegrees() const noexcept;
     void setSpectrumHueShiftDegrees(qreal degrees);
+    Q_INVOKABLE void commitSpectrumHueShift();
 
 signals:
     void themeChanged();
+    void windowShapeChanged();
 
 private:
     struct ThemeData final {
@@ -186,6 +189,7 @@ private:
     QHash<QString, ThemeData> m_themes;
     QString m_currentThemeId{"builtin.default"};
     ThemeData m_current;
+    QTimer m_huePersistTimer;
 };
 
 } // namespace yaap

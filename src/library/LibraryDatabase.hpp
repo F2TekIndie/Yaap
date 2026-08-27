@@ -4,6 +4,7 @@
 #include "domain/Track.hpp"
 
 #include <QSqlDatabase>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -12,6 +13,12 @@
 #include <vector>
 
 namespace yaap {
+
+struct LibraryIndexedTrack final {
+    Track track;
+    qint64 fileSize{-1};
+    qint64 modifiedMilliseconds{-1};
+};
 
 class LibraryDatabase final {
 public:
@@ -30,9 +37,17 @@ public:
         const QString& rootPath,
         const std::vector<Track>& tracks,
         QString& error);
+    bool synchronizeFolder(
+        const QString& rootPath,
+        const std::vector<LibraryIndexedTrack>& tracks,
+        const QStringList& observedSources,
+        bool removeMissing,
+        QString& error);
     bool removeFolder(const QString& rootPath, QString& error);
     [[nodiscard]] QStringList folders(QString& error) const;
     [[nodiscard]] std::vector<Track> tracks(QString& error) const;
+    [[nodiscard]] std::vector<LibraryIndexedTrack> indexedTracks(QString& error) const;
+    [[nodiscard]] QSet<QString> artworkSources(QString& error) const;
     [[nodiscard]] std::optional<Track> trackById(
         const std::string& id,
         QString& error) const;
@@ -50,6 +65,7 @@ private:
         const QString& rootPath,
         const Track& track,
         QString& error);
+    bool upsertFileState(const LibraryIndexedTrack& track, QString& error);
 
     QString m_connectionName;
     QSqlDatabase m_database;

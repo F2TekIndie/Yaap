@@ -17,7 +17,6 @@ Item {
     signal modsRequested()
     signal fileRequested()
     signal streamRequested()
-    signal folderRequested()
 
     function formatTime(milliseconds) {
         const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -33,6 +32,8 @@ Item {
         spacing: Theme.spacing
 
         RowLayout {
+            id: navigationRow
+
             Layout.fillWidth: true
             Item {
                 Layout.fillWidth: true
@@ -57,6 +58,8 @@ Item {
                 }
             }
             Button {
+                id: providersButton
+
                 text: "Providers (" + Providers.availableProviderCount + ")"
                 onClicked: root.providersRequested()
             }
@@ -68,6 +71,30 @@ Item {
             Button { text: "Radio (" + Radio.count + ")"; onClicked: root.radioRequested() }
             Button { text: "Mods"; onClicked: root.modsRequested() }
             Label { text: Player.stateName; color: Theme.secondaryText }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.preferredHeight: openActions.implicitHeight
+
+            RowLayout {
+                id: openActions
+
+                anchors.left: parent.left
+                anchors.leftMargin: providersButton.x
+                spacing: Theme.spacing
+
+                Button {
+                    text: "Open file"
+                    enabled: !Player.isLoading
+                    onClicked: root.fileRequested()
+                }
+                Button {
+                    text: "Open stream"
+                    enabled: !Player.isLoading
+                    onClicked: root.streamRequested()
+                }
+            }
         }
 
         ExtensionHost {
@@ -150,22 +177,45 @@ Item {
         }
 
         RowLayout {
-            Layout.alignment: Qt.AlignHCenter
+            Layout.fillWidth: true
             spacing: Theme.spacing
-            Button { text: "Open file"; enabled: !Player.isLoading; onClicked: root.fileRequested() }
-            Button { text: "Open stream"; enabled: !Player.isLoading; onClicked: root.streamRequested() }
-            Button {
-                text: MusicLibrary.scanning ? "Scanning…" : "Add library (" + MusicLibrary.trackCount + ")"
-                enabled: !MusicLibrary.scanning
-                onClicked: root.folderRequested()
-            }
-            Button {
+
+            TransportButton {
                 id: playPauseButton
-                text: Player.isPlaying ? "Pause" : "Play"
+                iconSource: Player.isPlaying
+                    ? Qt.resolvedUrl("icons/pause.svg")
+                    : Qt.resolvedUrl("icons/play.svg")
+                accessibleLabel: Player.isPlaying ? "Pause" : "Play"
                 enabled: Player.hasAudio
                 onClicked: Player.isPlaying ? Player.pause() : Player.play()
             }
-            Button { text: "Stop"; enabled: Player.hasAudio; onClicked: Player.stop() }
+
+            TransportButton {
+                iconSource: Qt.resolvedUrl("icons/stop.svg")
+                accessibleLabel: "Stop"
+                enabled: Player.hasAudio
+                onClicked: Player.stop()
+            }
+
+            Item { Layout.fillWidth: true }
+
+            TransportButton {
+                iconSource: Player.muted || Player.volume <= 0
+                    ? Qt.resolvedUrl("icons/mute.svg")
+                    : Qt.resolvedUrl("icons/volume.svg")
+                accessibleLabel: Player.muted ? "Unmute" : "Mute"
+                onClicked: Player.toggleMuted()
+            }
+
+            Slider {
+                Layout.preferredWidth: 130
+                from: 0
+                to: 1
+                stepSize: 0.01
+                value: Player.volume
+                Accessible.name: "Volume"
+                onMoved: Player.volume = value
+            }
         }
 
         ExtensionHost {

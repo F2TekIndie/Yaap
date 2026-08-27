@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 4.2)
 
 project(
   Yaap
-  VERSION 0.1.0
+  VERSION 0.2.0
   DESCRIPTION "Cross-platform moddable music player"
   LANGUAGES CXX
 )
@@ -22,11 +22,17 @@ if(YAAP_ENABLE_SANITIZERS)
   endif()
 endif()
 
+# Migrate build trees configured before the distribution moved out of the build
+# directory, while preserving an explicitly customized destination.
+if(DEFINED YAAP_DISTRIBUTION_ROOT
+    AND YAAP_DISTRIBUTION_ROOT STREQUAL "${CMAKE_BINARY_DIR}/distribution")
+  unset(YAAP_DISTRIBUTION_ROOT CACHE)
+endif()
 set(
   YAAP_DISTRIBUTION_ROOT
-  "${CMAKE_BINARY_DIR}/distribution"
+  "${PROJECT_SOURCE_DIR}/distribution"
   CACHE PATH
-  "Directory where runnable post-build application layouts are created"
+  "Directory where the runnable Release application layout is created"
 )
 
 set(CMAKE_CXX_STANDARD 20)
@@ -350,9 +356,15 @@ if(YAAP_BUILD_APP)
       qml/Yaap/App/WindowChrome.qml
       qml/Yaap/App/FullPlayerView.qml
       qml/Yaap/App/MiniPlayerView.qml
+      qml/Yaap/App/TransportButton.qml
     RESOURCES
       qml/Yaap/App/icons/miniplayer.svg
+      qml/Yaap/App/icons/mute.svg
+      qml/Yaap/App/icons/pause.svg
+      qml/Yaap/App/icons/play.svg
       qml/Yaap/App/icons/restore.svg
+      qml/Yaap/App/icons/stop.svg
+      qml/Yaap/App/icons/volume.svg
   )
 
   set_target_properties(
@@ -404,9 +416,9 @@ if(YAAP_BUILD_APP)
       )
     endif()
 
-    # PROTOTYPE: Keep this convenient post-build development layout until all
-    # local workflows consume the install/CPack layout below; signed releases
-    # should be produced only by the release pipeline.
+    # PROTOTYPE: Keep this convenient runnable Release layout until the signed
+    # install/CPack pipeline becomes the sole release path. The deployment
+    # script intentionally ignores non-Release configurations.
     add_custom_command(
       TARGET yaap_app
       POST_BUILD
@@ -414,14 +426,14 @@ if(YAAP_BUILD_APP)
         "${CMAKE_COMMAND}"
         "-DYAAP_APP_EXECUTABLE=$<TARGET_FILE:yaap_app>"
         "-DYAAP_SOURCE_RUNTIME_DIR=$<TARGET_FILE_DIR:yaap_app>"
-        "-DYAAP_DISTRIBUTION_DIR=${YAAP_DISTRIBUTION_ROOT}/$<CONFIG>"
+        "-DYAAP_DISTRIBUTION_DIR=${YAAP_DISTRIBUTION_ROOT}"
         "-DYAAP_WINDEPLOYQT=${YAAP_WINDEPLOYQT_EXECUTABLE}"
         "-DYAAP_QML_DIR=${CMAKE_CURRENT_SOURCE_DIR}/qml"
         "-DYAAP_SAMPLE_MODS_DIR=${CMAKE_CURRENT_SOURCE_DIR}/samples/mods"
         "-DYAAP_SAMPLE_PROVIDER_EXECUTABLE=$<TARGET_FILE:yaap_sample_provider>"
         "-DYAAP_DEPLOY_CONFIGURATION=$<CONFIG>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DeployWindows.cmake"
-      COMMENT "Creating runnable Yaap distribution for $<CONFIG>"
+      COMMENT "Running Release-only Yaap distribution step"
       VERBATIM
     )
   endif()
@@ -495,6 +507,8 @@ if(BUILD_TESTING)
     yaap_tests
     src/app/AudioVisualizationModel.cpp
     src/app/AudioVisualizationModel.hpp
+    src/app/LibraryController.cpp
+    src/app/LibraryController.hpp
     src/app/PlayerController.cpp
     src/app/PlayerController.hpp
     src/app/RadioController.cpp

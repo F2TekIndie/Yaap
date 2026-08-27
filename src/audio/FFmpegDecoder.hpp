@@ -35,7 +35,7 @@ struct StreamOptions final {
     std::chrono::milliseconds prebufferDuration{250};
     bool reconnectNetworkStream{};
     bool requestIcyMetadata{};
-    std::string userAgent{"Yaap/0.1"};
+    std::string userAgent{"Yaap/0.2"};
     std::string httpHeaders;
 };
 

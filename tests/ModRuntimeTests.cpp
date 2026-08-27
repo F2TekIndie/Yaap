@@ -196,12 +196,14 @@ TEST_CASE("Every bundled sample theme is a valid selectable package")
             CHECK(themes.spectrumGradientStart() != QColor{"#ff2bd6"});
             themes.setSpectrumHueShiftDegrees(999.0);
             CHECK(themes.spectrumHueShiftDegrees() == 180.0);
+            themes.commitSpectrumHueShift();
 
             ThemeManager restoredThemes;
             REQUIRE(restoredThemes.registerTheme(parsed.manifest, error));
             REQUIRE(restoredThemes.selectTheme(parsed.manifest.id, error));
             CHECK(restoredThemes.spectrumHueShiftDegrees() == 180.0);
             restoredThemes.setSpectrumHueShiftDegrees(0.0);
+            restoredThemes.commitSpectrumHueShift();
         }
     }
 }

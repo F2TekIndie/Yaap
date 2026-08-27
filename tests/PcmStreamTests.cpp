@@ -75,6 +75,26 @@ TEST_CASE("PCM stream reports absolute position after a seek restart")
     REQUIRE(stream.positionMilliseconds() == 2'000);
 }
 
+TEST_CASE("PCM stream wakes a blocked producer when the consumer frees capacity")
+{
+    yaap::PcmStream stream{1};
+    const std::array samples{0.25F, -0.25F};
+    REQUIRE(stream.write(samples) == 1);
+
+    std::atomic<bool> awakened{false};
+    std::jthread producer([&](const std::stop_token token) {
+        awakened.store(stream.waitForWritableFrames(token), std::memory_order_release);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    REQUIRE_FALSE(awakened.load(std::memory_order_acquire));
+
+    stream.play();
+    std::array<float, 2> output{};
+    REQUIRE(stream.render(output, 1) == 1);
+    producer.join();
+    REQUIRE(awakened.load(std::memory_order_acquire));
+}
+
 TEST_CASE("SPSC PCM ring buffer transfers frames concurrently without loss")
 {
     constexpr std::size_t frameCount = 10'000;

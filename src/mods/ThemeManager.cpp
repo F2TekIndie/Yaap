@@ -150,6 +150,10 @@ ThemeManager::ThemeManager(QObject* parent)
     : QObject(parent)
 {
     m_themes.insert(m_currentThemeId, m_current);
+    m_huePersistTimer.setSingleShot(true);
+    m_huePersistTimer.setInterval(300);
+    connect(&m_huePersistTimer, &QTimer::timeout,
+        this, &ThemeManager::commitSpectrumHueShift);
 }
 
 void ThemeManager::resetAvailableThemes()
@@ -161,6 +165,7 @@ void ThemeManager::resetAvailableThemes()
         m_currentThemeId = "builtin.default";
         m_current = builtIn;
         emit themeChanged();
+        emit windowShapeChanged();
     }
 }
 
@@ -188,6 +193,9 @@ bool ThemeManager::selectTheme(const QString& modId, QString& error)
         error = "Theme is not available: " + modId;
         return false;
     }
+    if (m_huePersistTimer.isActive()) {
+        commitSpectrumHueShift();
+    }
     m_currentThemeId = modId;
     m_current = iterator.value();
     QSettings settings;
@@ -202,6 +210,7 @@ bool ThemeManager::selectTheme(const QString& modId, QString& error)
     }
     settings.setValue("mods/currentTheme", modId);
     emit themeChanged();
+    emit windowShapeChanged();
     return true;
 }
 
@@ -362,8 +371,17 @@ void ThemeManager::setSpectrumHueShiftDegrees(const qreal degrees)
     }
     m_current.spectrumHueShiftDegrees = bounded;
     m_themes[m_currentThemeId].spectrumHueShiftDegrees = bounded;
-    QSettings{}.setValue(hueShiftSettingsKey(m_currentThemeId), bounded);
+    m_huePersistTimer.start();
     emit themeChanged();
+}
+
+void ThemeManager::commitSpectrumHueShift()
+{
+    m_huePersistTimer.stop();
+    if (m_current.spectrumHueShiftAdjustable) {
+        QSettings{}.setValue(
+            hueShiftSettingsKey(m_currentThemeId), m_current.spectrumHueShiftDegrees);
+    }
 }
 
 bool ThemeManager::readThemeFile(const QString& path,

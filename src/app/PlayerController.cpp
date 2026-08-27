@@ -8,6 +8,7 @@
 #include <QDebug>
 #include <QMetaObject>
 #include <QPointer>
+#include <QSettings>
 
 #include <algorithm>
 #include <memory>
@@ -53,6 +54,11 @@ PlayerController::PlayerController(AudioAnalysisEngine* analysisEngine, QObject*
     : QObject(parent)
     , m_output(analysisEngine)
 {
+    QSettings settings;
+    m_output.setVolume(static_cast<float>(
+        std::clamp(settings.value("playback/volume", 0.8).toDouble(), 0.0, 1.0)));
+    m_output.setMuted(settings.value("playback/muted", false).toBool());
+
     // PROTOTYPE: Position/end state is polled from atomics. The full playback
     // control layer should publish coalesced PlaybackSessionSnapshot updates.
     m_positionTimer.setInterval(100);
@@ -134,7 +140,7 @@ double PlayerController::progress() const noexcept
 
 bool PlayerController::hasAudio() const noexcept
 {
-    return m_output.hasAudio();
+    return m_output.hasAudio() || hasSource();
 }
 
 bool PlayerController::isPlaying() const noexcept
@@ -151,6 +157,9 @@ bool PlayerController::isBuffering() const noexcept
 {
     return m_stateMachine.state() == PlaybackState::Buffering;
 }
+
+qreal PlayerController::volume() const noexcept { return m_output.volume(); }
+bool PlayerController::muted() const noexcept { return m_output.isMuted(); }
 
 void PlayerController::openFile(const QUrl& url)
 {
@@ -360,7 +369,9 @@ void PlayerController::startStream(
 
 void PlayerController::play()
 {
-    if (m_stateMachine.state() == PlaybackState::Finished) {
+    if (m_stateMachine.state() == PlaybackState::Finished
+        || (m_stateMachine.state() == PlaybackState::Stopped
+            && !m_output.hasAudio() && hasSource())) {
         // Replaying reopens the source because consumed frames are intentionally
         // absent from the bounded streaming ring buffer.
         startStream(StreamStartMode::AutoPlay, false);
@@ -396,8 +407,42 @@ void PlayerController::stop()
         return;
     }
 
-    // A stopped session owns no retained PCM, so reopen at frame zero.
-    startStream(StreamStartMode::Stopped, false);
+    m_reconnectTimer.stop();
+    m_reconnectScheduled = false;
+    m_output.clear();
+    cancelDecode();
+    m_stream.reset();
+    m_positionMilliseconds = 0;
+    m_durationMilliseconds = 0;
+    emit positionChanged();
+    emit durationChanged();
+    setState(PlaybackState::Stopped);
+}
+
+void PlayerController::setVolume(const qreal volume)
+{
+    const auto bounded = std::clamp(volume, 0.0, 1.0);
+    if (qFuzzyCompare(this->volume() + 1.0, bounded + 1.0)) {
+        return;
+    }
+    m_output.setVolume(static_cast<float>(bounded));
+    QSettings{}.setValue("playback/volume", bounded);
+    emit volumeChanged();
+}
+
+void PlayerController::setMuted(const bool muted)
+{
+    if (this->muted() == muted) {
+        return;
+    }
+    m_output.setMuted(muted);
+    QSettings{}.setValue("playback/muted", muted);
+    emit volumeChanged();
+}
+
+void PlayerController::toggleMuted()
+{
+    setMuted(!muted());
 }
 
 void PlayerController::seek(const qint64 positionMilliseconds)
@@ -425,6 +470,10 @@ void PlayerController::cancelDecode()
     }
 
     m_generation.fetch_add(1, std::memory_order_acq_rel);
+    m_decodeThread.request_stop();
+    if (m_stream) {
+        m_stream->interruptProducerWait();
+    }
     m_taskReaper.retire(std::move(m_decodeThread));
 }
 
@@ -442,10 +491,16 @@ void PlayerController::setState(const PlaybackState state)
 void PlayerController::setError(QString message)
 {
     m_output.clear();
+    cancelDecode();
     m_stream.reset();
     m_errorMessage = std::move(message);
     emit errorMessageChanged();
     setState(PlaybackState::Error);
+}
+
+bool PlayerController::hasSource() const noexcept
+{
+    return m_sourceIsNetwork ? !m_sourceUrl.empty() : !m_sourcePath.empty();
 }
 
 void PlayerController::updatePosition()

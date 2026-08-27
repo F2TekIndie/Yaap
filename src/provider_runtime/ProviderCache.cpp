@@ -64,7 +64,9 @@ bool ProviderCache::put(
         error = "Provider cache entry is invalid or outside supported bounds.";
         return false;
     }
-    const auto now = QDateTime::currentSecsSinceEpoch();
+    // Millisecond precision avoids entries with a one-second TTL expiring
+    // immediately when insertion straddles a wall-clock second boundary.
+    const auto now = QDateTime::currentMSecsSinceEpoch();
     QSqlQuery query{m_database};
     query.prepare("INSERT INTO provider_cache(namespace,cache_key,payload,etag,expires_utc,"
         "accessed_utc,payload_bytes) VALUES(?,?,?,?,?,?,?) ON CONFLICT(namespace,cache_key) "
@@ -75,7 +77,7 @@ bool ProviderCache::put(
     query.addBindValue(key);
     query.addBindValue(payload);
     query.addBindValue(etag);
-    query.addBindValue(now + lifetimeSeconds);
+    query.addBindValue(now + lifetimeSeconds * 1'000);
     query.addBindValue(now);
     query.addBindValue(payload.size());
     if (!query.exec()) {
@@ -103,7 +105,7 @@ std::optional<ProviderCacheEntry> ProviderCache::get(
     if (!query.next()) {
         return std::nullopt;
     }
-    const auto now = QDateTime::currentSecsSinceEpoch();
+    const auto now = QDateTime::currentMSecsSinceEpoch();
     const auto stale = query.value(2).toLongLong() <= now;
     if (stale && !allowStale) {
         return std::nullopt;

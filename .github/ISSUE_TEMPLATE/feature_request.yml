@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose a focused improvement to Yaap
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the user need or limitation rather than only the desired implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain how the feature should work from a user's perspective.
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Primary scope
+      options:
+        - Playback
+        - Library and playlists
+        - Internet radio
+        - Streaming provider
+        - Provider extension API
+        - UI or theme mod API
+        - Accessibility
+        - Packaging or platform support
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Note workarounds or different designs you considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add mockups, examples, or compatibility constraints if useful.
+

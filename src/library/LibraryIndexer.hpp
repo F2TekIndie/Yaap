@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/Track.hpp"
+#include "library/LibraryDatabase.hpp"
 
 #include <QFileSystemWatcher>
 #include <QFutureWatcher>
@@ -10,14 +10,15 @@
 #include <QTimer>
 
 #include <vector>
+#include <unordered_map>
 
 namespace yaap {
 
-class LibraryDatabase;
-
 struct LibraryFolderScan final {
     QString rootPath;
-    std::vector<Track> tracks;
+    std::vector<LibraryIndexedTrack> tracks;
+    QStringList observedSources;
+    bool complete{true};
 };
 
 struct LibraryScanBatch final {
@@ -50,8 +51,10 @@ signals:
 private:
     static LibraryScanBatch scanFolders(
         const QStringList& roots,
-        const QString& artworkCachePath);
+        const QString& artworkCachePath,
+        const std::unordered_map<std::string, LibraryIndexedTrack>& previousTracks);
     void applyScan();
+    void pruneArtworkCache();
 
     LibraryDatabase& m_database;
     QString m_artworkCachePath;

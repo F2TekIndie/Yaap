@@ -1,106 +1,52 @@
-# Roadmap after extension API 1.0
+# Extension platform delivery record and roadmap
 
-Steps 1–7 established the versioned contracts, validated packages, data-only
-themes, declared QML slots, persisted permission grants, bounded provider IPC,
-and the asynchronous C++ provider SDK. The remaining work is reordered below
-using what the implementation exposed about the actual trust and lifecycle
-boundaries.
+Extension API 1.1 is implemented locally. This document records what the former
+steps 8–15 delivered and separates completed engineering from release work that
+requires external infrastructure or identities.
 
-## Implementation status
+## Delivered milestones
 
 | Step | Status | Delivered boundary |
 |---|---|---|
-| 8 | Implemented | Federated gateway, stale-generation cancellation, DTO mapping, sample-provider playback |
-| 9 | Implemented | Multi-account model, platform credential storage, connection tests, scoped one-shot handles |
-| 10 | Implemented locally | Version/content-digest grant binding and declared publisher metadata; cryptographic publisher verification remains required before remote distribution |
-| 11 | Implemented where locally enforceable | Deadlines, bounded logs, crash-loop suppression, Windows Job restrictions, Unix resource limits; native-code network allow-list enforcement needs a stronger OS sandbox |
-| 12 | Implemented | Host-owned provider search, account, local-library, and radio collection views |
-| 13 | Implemented | Namespaced SQLite cache, TTL/stale state, offline mode, 64-MiB LRU pruning, account cleanup |
-| 14 | Implemented locally | Standalone conformance runner, contract tests, libFuzzer target, sanitizer option, Windows/Linux/macOS CI; live server matrix needs pinned server fixtures |
-| 15 | Implemented locally | Frozen codes/schemas, compatibility policy, SDK template, install/CPack rules, SBOM/notices, clean-runner package jobs; signing/notarization needs real identities |
+| 8 | Implemented | Federated provider gateway, generation cancellation, DTO mapping, and sample-provider playback |
+| 9 | Implemented | Multi-account model, platform credential storage, connection tests, and scoped one-shot handles |
+| 10 | Implemented locally | Version/content-digest grant binding and declared publisher metadata |
+| 11 | Implemented where locally enforceable | Request deadlines, bounded logs, crash-loop suppression, Windows Job restrictions, and Unix resource limits |
+| 12 | Implemented | Host-owned provider search, account, local-library, and radio views |
+| 13 | Implemented | Namespaced SQLite cache, TTL/stale state, offline reads, bounded LRU pruning, and account cleanup |
+| 14 | Implemented locally | Standalone conformance runner, contract tests, parser fuzz target, sanitizer option, and Windows/Linux/macOS CI definitions |
+| 15 | Implemented locally | Frozen schemas and error codes, compatibility policy, SDK template, install/CPack rules, SBOM, notices, and release gates |
 
-The repository intentionally contains no remote mod catalog or automatic update
-path until cryptographic publisher verification is implemented. The release
-gate fails when signing is required without an identity; it cannot manufacture
-a trusted certificate or notarization credential.
+The sample provider can search and resolve playable media through the same host
+gateway used by OpenSubsonic and Jellyfin. Provider processes use bounded local
+IPC and can be cancelled or terminated independently of the player UI.
 
-## 8. Connect providers to the application domain
+## Remaining release gates
 
-Add a host-side provider gateway that maps protocol DTOs into `Track`,
-`Playlist`, and provider/account models. Route browse, search, resolve, artwork,
-and playlist requests through it with cancellation and generation IDs so stale
-responses cannot update the UI. Keep existing built-in OpenSubsonic and
-Jellyfin clients behind the same interface before moving them out of process.
+- Add cryptographic publisher signatures before offering a remote mod catalog
+  or automatic package updates. The current publisher field is declarative.
+- Sign Windows and macOS application artifacts and notarize the macOS bundle
+  using real project identities.
+- Run clean-machine installer tests on every supported OS and architecture.
+- Maintain pinned OpenSubsonic and Jellyfin fixtures for live compatibility
+  testing in addition to deterministic parser and protocol tests.
+- Evaluate a stronger native sandbox or a WASM provider runtime before treating
+  provider permissions as enforceable network or filesystem isolation.
 
-**Exit:** the sample provider can browse, search, and resolve a playable track
-through the normal application UI and playback session.
+Yaap intentionally contains no remote mod catalog or automatic updater until
+publisher verification is available. QML extensions are trusted in-process
+code, and native provider restrictions reduce risk without constituting a full
+security boundary.
 
-## 9. Add account configuration and credential handles
+## Product roadmap
 
-Create provider/account settings, connection tests, and per-account capability
-negotiation. Secrets stay in the platform credential store; provider messages
-receive short-lived opaque credential handles or scoped results, never values
-from another provider or account.
+The next player-facing work is independent of the extension API release gates:
 
-**Exit:** multiple accounts can be added, tested, disabled, and removed without
-placing a secret in JSON, SQLite, logs, command lines, or mod settings.
-
-## 10. Bind trust grants to package identity
-
-Hash installed package contents, persist the accepted digest and version with
-grants, and require review when executable or QML content changes. Add signed
-package metadata and publisher identity before any remote catalog or automatic
-update feature. Treat QML extensions and native providers as trusted code until
-an enforceable OS/WASM sandbox exists.
-
-**Exit:** changing a granted package invalidates its active grant, and signed
-updates have an auditable publisher and content identity.
-
-## 11. Harden provider process containment
-
-Add OS-specific launch policies, resource ceilings, log quotas, crash-loop
-suppression, health checks, and explicit network-origin enforcement where the
-platform permits it. Preserve graceful cancellation and shutdown, but recover
-the host independently from provider hangs or crashes.
-
-**Exit:** malformed, noisy, repeatedly crashing, or unresponsive providers are
-bounded and diagnosable without destabilizing Yaap.
-
-## 12. Build server, radio, and federated-search UI
-
-Implement provider/account navigation, station collections, paged server
-browsing, unified search, result provenance, loading/empty/error states, and
-keyboard/accessibility behavior. Keep provider UI host-owned; providers return
-data and declared actions rather than arbitrary account screens.
-
-**Exit:** local library, radio, OpenSubsonic, Jellyfin, and sample-provider
-content can be navigated consistently without entering URLs manually.
-
-## 13. Add cache and offline policy
-
-Introduce schema-versioned metadata/artwork caches with provider namespaces,
-ETags or revision tokens, size limits, eviction, invalidation, and explicit
-offline behavior. Do not cache credentials or unconstrained provider payloads.
-
-**Exit:** startup and repeat browsing work from bounded caches, stale data is
-visible as stale, and account removal deletes its scoped cache.
-
-## 14. Publish compatibility and conformance tooling
-
-Turn protocol and manifest fixtures into a provider conformance runner. Add
-contract tests for cancellation races, late responses, paging, malformed JSON,
-oversized frames, slow handshakes, process death, API-range negotiation, and
-real OpenSubsonic/Jellyfin version matrices. Add parser fuzzing and sanitizers.
-
-**Exit:** third-party providers can validate a package independently, and CI
-covers Windows, Linux, and macOS against supported Qt/FFmpeg combinations.
-
-## 15. Stabilize and release Extension API 1.x
-
-Generate SDK reference documentation and package templates, define deprecation
-and compatibility rules, freeze protocol error codes and DTO schemas, bundle
-license/SBOM material, and perform signed clean-machine installer tests. Defer
-automatic mod distribution until steps 10, 11, and 14 are complete.
-
-**Exit:** API 1.x has reproducible artifacts, compatibility policy, examples,
-and release gates suitable for third-party development.
+1. Gapless playback and playback-queue integration across every source type.
+2. ReplayGain and loudness normalization with user-visible policy controls.
+3. Crossfade and equalization in a dedicated mixer/DSP layer.
+4. Output-device selection and explicit format negotiation.
+5. Operating-system media-session controls and global shortcuts.
+6. A complete playlist/station selection UI instead of automatically opening
+   the first valid entry from the basic stream dialog.
+7. Filesystem-journal-backed indexing for very large local libraries.

@@ -80,11 +80,11 @@ WindowShapeController::WindowShapeController(
     , m_window(window)
 {
     m_updateTimer.setSingleShot(true);
-    m_updateTimer.setInterval(0);
+    m_updateTimer.setInterval(75);
     connect(&m_updateTimer, &QTimer::timeout,
         this, &WindowShapeController::applyShape);
-    connect(&m_themes, &ThemeManager::themeChanged,
-        this, &WindowShapeController::scheduleUpdate);
+    connect(&m_themes, &ThemeManager::windowShapeChanged,
+        this, &WindowShapeController::invalidateShape);
     connect(&m_presentation, &WindowPresentationController::modeChanged,
         this, [this] {
             // A presentation change can also resize the native window. Drop the
@@ -92,10 +92,12 @@ WindowShapeController::WindowShapeController(
             m_window.setMask({});
             scheduleUpdate();
         });
-    connect(&m_window, &QQuickWindow::widthChanged,
-        this, &WindowShapeController::scheduleUpdate);
-    connect(&m_window, &QQuickWindow::heightChanged,
-        this, &WindowShapeController::scheduleUpdate);
+    const auto windowResized = [this] {
+        m_window.setMask({});
+        scheduleUpdate();
+    };
+    connect(&m_window, &QQuickWindow::widthChanged, this, windowResized);
+    connect(&m_window, &QQuickWindow::heightChanged, this, windowResized);
     connect(&m_window, &QQuickWindow::devicePixelRatioChanged,
         this, &WindowShapeController::scheduleUpdate);
     // Main.qml applies the persisted startup geometry before engine.load()
@@ -107,6 +109,13 @@ WindowShapeController::WindowShapeController(
 void WindowShapeController::scheduleUpdate()
 {
     m_updateTimer.start();
+}
+
+void WindowShapeController::invalidateShape()
+{
+    m_cacheValid = false;
+    m_window.setMask({});
+    scheduleUpdate();
 }
 
 void WindowShapeController::applyShape()
@@ -141,6 +150,12 @@ void WindowShapeController::applyShape()
     const auto alignment = miniPlayer
         ? m_themes.miniBackgroundImageAlignment()
         : m_themes.backgroundImageAlignment();
+    if (m_cacheValid && m_cachedSource == source
+        && m_cachedWindowSize == windowSize && m_cachedFit == fit
+        && m_cachedAlignment == alignment && m_cachedMiniPlayer == miniPlayer) {
+        m_window.setMask(m_cachedRegion);
+        return;
+    }
     const auto imageSize = renderedSize(sourceSize, windowSize, fit);
     reader.setScaledSize(imageSize);
     const auto image = reader.read();
@@ -163,6 +178,13 @@ void WindowShapeController::applyShape()
         m_window.setMask({});
         return;
     }
+    m_cachedSource = source;
+    m_cachedWindowSize = windowSize;
+    m_cachedFit = fit;
+    m_cachedAlignment = alignment;
+    m_cachedMiniPlayer = miniPlayer;
+    m_cachedRegion = region;
+    m_cacheValid = true;
     m_window.setMask(region);
 }
 

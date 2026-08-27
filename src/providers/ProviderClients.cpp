@@ -12,11 +12,50 @@
 #include <QUrlQuery>
 
 #include <utility>
+#include <memory>
+#include <iterator>
 
 namespace yaap {
 namespace {
 
 constexpr int requestTimeoutMilliseconds = 15'000;
+constexpr qsizetype maximumProviderResponseBytes = 4 * 1024 * 1024;
+constexpr int jellyfinPageSize = 250;
+constexpr std::size_t maximumJellyfinTracks = 20'000;
+
+struct BoundedReplyBody final {
+    QByteArray bytes;
+    bool oversized{};
+};
+
+void consumeReplyData(QNetworkReply& reply, BoundedReplyBody& body)
+{
+    const auto chunk = reply.readAll();
+    const auto remaining = maximumProviderResponseBytes - body.bytes.size();
+    if (chunk.size() > remaining) {
+        if (remaining > 0) {
+            body.bytes.append(chunk.first(remaining));
+        }
+        body.oversized = true;
+        reply.abort();
+        return;
+    }
+    body.bytes.append(chunk);
+}
+
+[[nodiscard]] std::shared_ptr<BoundedReplyBody> collectReplyBody(
+    QNetworkReply& reply, QObject& context)
+{
+    auto body = std::make_shared<BoundedReplyBody>();
+    QObject::connect(&reply, &QNetworkReply::readyRead, &context,
+        [&reply, body] { consumeReplyData(reply, *body); });
+    return body;
+}
+
+[[nodiscard]] QString oversizedReplyError()
+{
+    return "Provider response exceeds the 4 MiB safety limit.";
+}
 
 [[nodiscard]] QString replyError(QNetworkReply& reply)
 {
@@ -101,9 +140,16 @@ void OpenSubsonicClient::ping(StatusCallback callback)
     }
     QNetworkRequest request{endpoint("ping", query)};
     request.setTransferTimeout(requestTimeoutMilliseconds);
-    request.setHeader(QNetworkRequest::UserAgentHeader, "Yaap/0.1");
+    request.setHeader(QNetworkRequest::UserAgentHeader, "Yaap/0.2");
     auto* reply = m_network.get(request);
-    connect(reply, &QNetworkReply::finished, this, [reply, callback = std::move(callback)]() mutable {
+    auto body = collectReplyBody(*reply, *this);
+    connect(reply, &QNetworkReply::finished, this, [reply, body, callback = std::move(callback)]() mutable {
+        consumeReplyData(*reply, *body);
+        if (body->oversized) {
+            reply->deleteLater();
+            callback(false, oversizedReplyError());
+            return;
+        }
         const auto successful = reply->error() == QNetworkReply::NoError;
         auto error = successful ? QString{} : replyError(*reply);
         reply->deleteLater();
@@ -126,17 +172,24 @@ void OpenSubsonicClient::search(const QString& searchText, TracksCallback callba
     const auto authentication = query;
     QNetworkRequest request{endpoint("search3", query)};
     request.setTransferTimeout(requestTimeoutMilliseconds);
-    request.setHeader(QNetworkRequest::UserAgentHeader, "Yaap/0.1");
+    request.setHeader(QNetworkRequest::UserAgentHeader, "Yaap/0.2");
     auto* reply = m_network.get(request);
+    auto body = collectReplyBody(*reply, *this);
     connect(reply, &QNetworkReply::finished, this,
-        [reply, callback = std::move(callback), server = m_configuration.serverUrl, authentication]() mutable {
+        [reply, body, callback = std::move(callback), server = m_configuration.serverUrl, authentication]() mutable {
+            consumeReplyData(*reply, *body);
+            if (body->oversized) {
+                reply->deleteLater();
+                callback({.error = oversizedReplyError()});
+                return;
+            }
             if (reply->error() != QNetworkReply::NoError) {
                 auto error = replyError(*reply);
                 reply->deleteLater();
                 callback({.error = std::move(error)});
                 return;
             }
-            auto result = parseSearchResponse(reply->readAll(), server, authentication);
+            auto result = parseSearchResponse(body->bytes, server, authentication);
             reply->deleteLater();
             callback(std::move(result));
         });
@@ -147,6 +200,9 @@ ProviderTracksResult OpenSubsonicClient::parseSearchResponse(
     const QUrl& serverUrl,
     const QUrlQuery& authentication)
 {
+    if (json.size() > maximumProviderResponseBytes) {
+        return {.error = oversizedReplyError()};
+    }
     QJsonParseError parseError;
     const auto document = QJsonDocument::fromJson(json, &parseError);
     if (parseError.error != QJsonParseError::NoError) {
@@ -190,6 +246,13 @@ JellyfinClient::JellyfinClient(CredentialStore& credentials, QObject* parent)
 {
 }
 
+struct JellyfinClient::FetchState final {
+    QString query;
+    int startIndex{};
+    std::vector<Track> tracks;
+    TracksCallback callback;
+};
+
 void JellyfinClient::setConfiguration(JellyfinConfiguration configuration)
 {
     m_configuration = std::move(configuration);
@@ -206,9 +269,9 @@ QNetworkRequest JellyfinClient::request(const QUrl& url) const
 {
     QNetworkRequest result{url};
     result.setTransferTimeout(requestTimeoutMilliseconds);
-    result.setHeader(QNetworkRequest::UserAgentHeader, "Yaap/0.1");
+    result.setHeader(QNetworkRequest::UserAgentHeader, "Yaap/0.2");
     auto authorization = QByteArray{"MediaBrowser Client=\"Yaap\", Device=\"Desktop\", "
-        "DeviceId=\"YaapDesktop\", Version=\"0.1\""};
+        "DeviceId=\"YaapDesktop\", Version=\"0.2\""};
     if (!m_accessToken.isEmpty()) {
         authorization += ", Token=\"" + m_accessToken.toUtf8() + '"';
     }
@@ -233,7 +296,15 @@ void JellyfinClient::authenticate(StatusCallback callback)
     auto networkRequest = request(endpoint("/Users/AuthenticateByName"));
     networkRequest.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     auto* reply = m_network.post(networkRequest, QJsonDocument{body}.toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, callback = std::move(callback)]() mutable {
+    auto responseBody = collectReplyBody(*reply, *this);
+    connect(reply, &QNetworkReply::finished, this,
+        [this, reply, responseBody, callback = std::move(callback)]() mutable {
+        consumeReplyData(*reply, *responseBody);
+        if (responseBody->oversized) {
+            reply->deleteLater();
+            callback(false, oversizedReplyError());
+            return;
+        }
         if (reply->error() != QNetworkReply::NoError) {
             auto error = replyError(*reply);
             reply->deleteLater();
@@ -241,7 +312,7 @@ void JellyfinClient::authenticate(StatusCallback callback)
             return;
         }
         QJsonParseError parseError;
-        const auto body = QJsonDocument::fromJson(reply->readAll(), &parseError).object();
+        const auto body = QJsonDocument::fromJson(responseBody->bytes, &parseError).object();
         reply->deleteLater();
         m_accessToken = body.value("AccessToken").toString();
         m_userId = body.value("User").toObject().value("Id").toString();
@@ -253,29 +324,78 @@ void JellyfinClient::authenticate(StatusCallback callback)
 
 void JellyfinClient::fetchTracks(TracksCallback callback)
 {
+    search({}, std::move(callback));
+}
+
+void JellyfinClient::search(const QString& query, TracksCallback callback)
+{
     if (m_accessToken.isEmpty() || m_userId.isEmpty()) {
         callback({.error = "Authenticate with Jellyfin before loading tracks."});
         return;
     }
+    auto state = std::make_shared<FetchState>();
+    state->query = query.trimmed().left(200);
+    state->callback = std::move(callback);
+    state->tracks.reserve(jellyfinPageSize);
+    fetchTrackPage(state);
+}
+
+void JellyfinClient::fetchTrackPage(const std::shared_ptr<FetchState>& state)
+{
     auto url = endpoint("/Users/" + m_userId + "/Items");
     QUrlQuery query;
     query.addQueryItem("IncludeItemTypes", "Audio");
     query.addQueryItem("Recursive", "true");
     query.addQueryItem("Fields", "Album,Artists,RunTimeTicks");
+    query.addQueryItem("StartIndex", QString::number(state->startIndex));
+    query.addQueryItem("Limit", QString::number(jellyfinPageSize));
+    if (!state->query.isEmpty()) {
+        query.addQueryItem("SearchTerm", state->query);
+    }
     url.setQuery(query);
     auto* reply = m_network.get(request(url));
+    auto body = collectReplyBody(*reply, *this);
     connect(reply, &QNetworkReply::finished, this,
-        [reply, callback = std::move(callback), server = m_configuration.serverUrl,
+        [this, reply, body, state, server = m_configuration.serverUrl,
             token = m_accessToken]() mutable {
+            consumeReplyData(*reply, *body);
+            if (body->oversized) {
+                reply->deleteLater();
+                state->callback({.error = oversizedReplyError()});
+                return;
+            }
             if (reply->error() != QNetworkReply::NoError) {
                 auto error = replyError(*reply);
                 reply->deleteLater();
-                callback({.error = std::move(error)});
+                state->callback({.error = std::move(error)});
                 return;
             }
-            auto result = parseItemsResponse(reply->readAll(), server, token);
+            QJsonParseError parseError;
+            const auto document = QJsonDocument::fromJson(body->bytes, &parseError);
+            const auto itemCount = document.object().value("Items").toArray().size();
+            const auto totalCount = document.object().value("TotalRecordCount").toInteger(-1);
+            auto result = parseItemsResponse(body->bytes, server, token);
             reply->deleteLater();
-            callback(std::move(result));
+            if (!result.succeeded()) {
+                state->callback(std::move(result));
+                return;
+            }
+            if (state->tracks.size() + result.tracks.size() > maximumJellyfinTracks) {
+                state->callback({.error =
+                    "Jellyfin search exceeds the 20000-track safety limit; narrow the query."});
+                return;
+            }
+            state->tracks.insert(state->tracks.end(),
+                std::make_move_iterator(result.tracks.begin()),
+                std::make_move_iterator(result.tracks.end()));
+            state->startIndex += itemCount;
+            if (itemCount > 0
+                && ((totalCount >= 0 && state->startIndex < totalCount)
+                    || (totalCount < 0 && itemCount == jellyfinPageSize))) {
+                fetchTrackPage(state);
+                return;
+            }
+            state->callback({.tracks = std::move(state->tracks)});
         });
 }
 
@@ -284,13 +404,21 @@ ProviderTracksResult JellyfinClient::parseItemsResponse(
     const QUrl& serverUrl,
     const QString& accessToken)
 {
+    if (json.size() > maximumProviderResponseBytes) {
+        return {.error = oversizedReplyError()};
+    }
     QJsonParseError parseError;
     const auto document = QJsonDocument::fromJson(json, &parseError);
     if (parseError.error != QJsonParseError::NoError) {
         return {.error = jsonError(parseError)};
     }
     ProviderTracksResult result;
-    for (const auto& value : document.object().value("Items").toArray()) {
+    const auto items = document.object().value("Items").toArray();
+    if (items.size() > static_cast<qsizetype>(maximumJellyfinTracks)) {
+        return {.error = "Jellyfin response contains too many tracks."};
+    }
+    result.tracks.reserve(static_cast<std::size_t>(items.size()));
+    for (const auto& value : items) {
         const auto item = value.toObject();
         const auto id = item.value("Id").toString();
         auto streamUrl = appendPath(serverUrl, "/Audio/" + id + "/stream");

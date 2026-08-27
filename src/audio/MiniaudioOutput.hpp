@@ -25,6 +25,8 @@ public:
     [[nodiscard]] bool play(std::string& error);
     void pause() noexcept;
     void clear() noexcept;
+    void setVolume(float volume) noexcept;
+    void setMuted(bool muted) noexcept;
 
     [[nodiscard]] bool hasAudio() const noexcept;
     [[nodiscard]] bool isPlaying() const noexcept;
@@ -34,6 +36,8 @@ public:
     [[nodiscard]] std::int64_t bufferedMilliseconds() const noexcept;
     [[nodiscard]] std::int64_t positionMilliseconds() const noexcept;
     [[nodiscard]] std::int64_t durationMilliseconds() const noexcept;
+    [[nodiscard]] float volume() const noexcept;
+    [[nodiscard]] bool isMuted() const noexcept;
 
 private:
     struct Impl;

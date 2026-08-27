@@ -23,7 +23,7 @@ void RadioPlaylistLoader::load(const QUrl& url, Callback callback)
     request.setTransferTimeout(15'000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
         QNetworkRequest::NoLessSafeRedirectPolicy);
-    request.setHeader(QNetworkRequest::UserAgentHeader, "Yaap/0.1");
+    request.setHeader(QNetworkRequest::UserAgentHeader, "Yaap/0.2");
     auto* reply = m_network.get(request);
     auto content = std::make_shared<QByteArray>();
     connect(reply, &QNetworkReply::readyRead, this, [reply, content] {

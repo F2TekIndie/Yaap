@@ -45,3 +45,14 @@ TEST_CASE("A network source may start buffering while it opens")
     CHECK(state.transitionTo(yaap::PlaybackState::Buffering));
     CHECK(state.transitionTo(yaap::PlaybackState::Playing));
 }
+
+TEST_CASE("Loading and error playback can be explicitly stopped")
+{
+    yaap::PlaybackStateMachine loading;
+    REQUIRE(loading.transitionTo(yaap::PlaybackState::Loading));
+    CHECK(loading.transitionTo(yaap::PlaybackState::Stopped));
+
+    yaap::PlaybackStateMachine failed;
+    REQUIRE(failed.transitionTo(yaap::PlaybackState::Error));
+    CHECK(failed.transitionTo(yaap::PlaybackState::Stopped));
+}

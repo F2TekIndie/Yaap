@@ -19,6 +19,27 @@ std::size_t PcmStream::write(const std::span<const float> interleavedSamples) no
     return writtenFrames;
 }
 
+bool PcmStream::waitForWritableFrames(const std::stop_token stopToken) noexcept
+{
+    while (m_ringBuffer.writableFrames() == 0) {
+        const auto generation = m_spaceGeneration.load(std::memory_order_acquire);
+        if (stopToken.stop_requested()) {
+            return false;
+        }
+        if (m_ringBuffer.writableFrames() > 0) {
+            return true;
+        }
+        m_spaceGeneration.wait(generation, std::memory_order_acquire);
+    }
+    return !stopToken.stop_requested();
+}
+
+void PcmStream::interruptProducerWait() noexcept
+{
+    m_spaceGeneration.fetch_add(1, std::memory_order_release);
+    m_spaceGeneration.notify_all();
+}
+
 std::size_t PcmStream::render(
     const std::span<float> output,
     const std::size_t requestedFrames) noexcept
@@ -30,6 +51,10 @@ std::size_t PcmStream::render(
         return 0;
     }
     const auto renderedFrames = m_ringBuffer.read(output, requestedFrames);
+    if (renderedFrames > 0) {
+        m_spaceGeneration.fetch_add(1, std::memory_order_release);
+        m_spaceGeneration.notify_one();
+    }
     if (renderedFrames < requestedFrames && !isEndOfStream()) {
         m_underrunCount.fetch_add(1, std::memory_order_relaxed);
     }

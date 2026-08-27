@@ -11,6 +11,7 @@
 #include <QUrlQuery>
 
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace yaap {
@@ -73,6 +74,7 @@ public:
     void setConfiguration(JellyfinConfiguration configuration);
     void authenticate(StatusCallback callback);
     void fetchTracks(TracksCallback callback);
+    void search(const QString& query, TracksCallback callback);
 
     [[nodiscard]] static ProviderTracksResult parseItemsResponse(
         const QByteArray& json,
@@ -80,8 +82,11 @@ public:
         const QString& accessToken);
 
 private:
+    struct FetchState;
+
     [[nodiscard]] QNetworkRequest request(const QUrl& url) const;
     [[nodiscard]] QUrl endpoint(const QString& path) const;
+    void fetchTrackPage(const std::shared_ptr<FetchState>& state);
 
     CredentialStore& m_credentials;
     QNetworkAccessManager m_network;

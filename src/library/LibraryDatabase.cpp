@@ -82,6 +82,9 @@ bool LibraryDatabase::initializeSchema(QString& error)
             "album TEXT NOT NULL, artwork_source TEXT NOT NULL, duration_ms INTEGER NOT NULL, "
             "library_root TEXT NOT NULL)",
         "CREATE INDEX IF NOT EXISTS tracks_library_root_idx ON tracks(library_root)",
+        "CREATE TABLE IF NOT EXISTS library_file_state ("
+            "source TEXT PRIMARY KEY REFERENCES tracks(source) ON DELETE CASCADE, "
+            "size_bytes INTEGER NOT NULL, modified_ms INTEGER NOT NULL)",
         "CREATE TABLE IF NOT EXISTS library_folders (path TEXT PRIMARY KEY)",
         "CREATE TABLE IF NOT EXISTS playlists ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)",
@@ -103,6 +106,24 @@ bool LibraryDatabase::initializeSchema(QString& error)
 bool LibraryDatabase::synchronizeFolder(
     const QString& rootPath,
     const std::vector<Track>& tracksToStore,
+    QString& error)
+{
+    std::vector<LibraryIndexedTrack> indexed;
+    indexed.reserve(tracksToStore.size());
+    QStringList observedSources;
+    observedSources.reserve(static_cast<qsizetype>(tracksToStore.size()));
+    for (const auto& track : tracksToStore) {
+        indexed.push_back({track, -1, -1});
+        observedSources.push_back(QString::fromUtf8(track.source));
+    }
+    return synchronizeFolder(rootPath, indexed, observedSources, true, error);
+}
+
+bool LibraryDatabase::synchronizeFolder(
+    const QString& rootPath,
+    const std::vector<LibraryIndexedTrack>& tracksToStore,
+    const QStringList& observedSources,
+    const bool removeMissing,
     QString& error)
 {
     if (!m_database.transaction()) {
@@ -132,34 +153,62 @@ bool LibraryDatabase::synchronizeFolder(
 
     QSqlQuery rememberSource{m_database};
     rememberSource.prepare("INSERT INTO current_scan_sources(source) VALUES(?)");
-    for (const auto& track : tracksToStore) {
-        if (!track.isValid()) {
-            error = "Indexer produced an invalid track.";
+    for (const auto& source : observedSources) {
+        if (source.isEmpty()) {
+            continue;
+        }
+        rememberSource.bindValue(0, source);
+        if (!rememberSource.exec()) {
+            error = queryError(rememberSource, "Could not record an observed source");
             return rollback();
         }
-        rememberSource.bindValue(0, QString::fromUtf8(track.source));
-        if (!rememberSource.exec()) {
-            error = queryError(rememberSource, "Could not record an indexed source");
+    }
+    for (const auto& indexedTrack : tracksToStore) {
+        const auto& track = indexedTrack.track;
+        if (!track.isValid()) {
+            error = "Indexer produced an invalid track.";
             return rollback();
         }
         if (!upsertTrack(rootPath, track, error)) {
             return rollback();
         }
+        if (indexedTrack.fileSize >= 0 && indexedTrack.modifiedMilliseconds >= 0
+            && !upsertFileState(indexedTrack, error)) {
+            return rollback();
+        }
     }
 
-    QSqlQuery removeMissing{m_database};
-    removeMissing.prepare(
-        "DELETE FROM tracks WHERE library_root = ? "
-        "AND source NOT IN (SELECT source FROM current_scan_sources)");
-    removeMissing.addBindValue(rootPath);
-    if (!removeMissing.exec()) {
-        error = queryError(removeMissing, "Could not remove missing library tracks");
-        return rollback();
+    if (removeMissing) {
+        QSqlQuery removeMissingQuery{m_database};
+        removeMissingQuery.prepare(
+            "DELETE FROM tracks WHERE library_root = ? "
+            "AND source NOT IN (SELECT source FROM current_scan_sources)");
+        removeMissingQuery.addBindValue(rootPath);
+        if (!removeMissingQuery.exec()) {
+            error = queryError(removeMissingQuery, "Could not remove missing library tracks");
+            return rollback();
+        }
     }
 
     if (!m_database.commit()) {
         error = "Could not commit library synchronization: " + m_database.lastError().text();
         return rollback();
+    }
+    return true;
+}
+
+bool LibraryDatabase::upsertFileState(const LibraryIndexedTrack& indexedTrack, QString& error)
+{
+    QSqlQuery query{m_database};
+    query.prepare("INSERT INTO library_file_state(source,size_bytes,modified_ms) VALUES(?,?,?) "
+                  "ON CONFLICT(source) DO UPDATE SET size_bytes=excluded.size_bytes, "
+                  "modified_ms=excluded.modified_ms");
+    query.addBindValue(QString::fromUtf8(indexedTrack.track.source));
+    query.addBindValue(indexedTrack.fileSize);
+    query.addBindValue(indexedTrack.modifiedMilliseconds);
+    if (!query.exec()) {
+        error = queryError(query, "Could not store indexed file state");
+        return false;
     }
     return true;
 }
@@ -251,6 +300,39 @@ std::vector<Track> LibraryDatabase::tracks(QString& error) const
     std::vector<Track> result;
     while (query.next()) {
         result.push_back(trackFromQuery(query));
+    }
+    return result;
+}
+
+std::vector<LibraryIndexedTrack> LibraryDatabase::indexedTracks(QString& error) const
+{
+    QSqlQuery query{m_database};
+    if (!query.exec(
+            "SELECT t.id,t.kind,t.provider_id,t.source,t.title,t.artist,t.album,"
+            "t.artwork_source,t.duration_ms,s.size_bytes,s.modified_ms FROM tracks t "
+            "LEFT JOIN library_file_state s ON s.source=t.source")) {
+        error = queryError(query, "Could not load indexed file state");
+        return {};
+    }
+    std::vector<LibraryIndexedTrack> result;
+    while (query.next()) {
+        result.push_back({trackFromQuery(query),
+            query.value(9).isNull() ? -1 : query.value(9).toLongLong(),
+            query.value(10).isNull() ? -1 : query.value(10).toLongLong()});
+    }
+    return result;
+}
+
+QSet<QString> LibraryDatabase::artworkSources(QString& error) const
+{
+    QSqlQuery query{m_database};
+    if (!query.exec("SELECT artwork_source FROM tracks WHERE artwork_source <> ''")) {
+        error = queryError(query, "Could not load referenced artwork");
+        return {};
+    }
+    QSet<QString> result;
+    while (query.next()) {
+        result.insert(query.value(0).toString());
     }
     return result;
 }

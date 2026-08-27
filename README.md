@@ -1,137 +1,173 @@
-# Yaap prototype
+# Yaap
 
-Yaap is a C++20/Qt Quick music-player prototype. It plays local files and HTTP
-streams through FFmpeg, a bounded SPSC PCM ring, and miniaudio. It also contains
-the first complete service layer for a watched SQLite music library, station
-playlists, OpenSubsonic, Jellyfin, and operating-system credential storage.
+Yaap is a cross-platform C++20 and Qt Quick music player. The current 0.2
+prototype plays local files, internet streams, radio stations, OpenSubsonic,
+Jellyfin, and out-of-process provider extensions through FFmpeg and miniaudio.
+Its interface is frameless, supports a compact miniplayer, and can be restyled
+with validated third-party theme packages.
 
-## Implemented architecture
+## Sample themes
 
-- Continuous FFmpeg producer with interruptible I/O, 15-second deadlines,
-  seeking, prebuffering, cancellation, and network reconnect options.
-- Real-time-safe miniaudio consumer backed by a bounded 48 kHz stereo float
-  SPSC ring. Decoder shutdown is retired to a reaper thread, never joined by the
-  GUI thread.
-- Explicit track, queue, provider, playlist, and playback-session domain models.
-- SQLite library synchronization, FFmpeg metadata and embedded-artwork
-  extraction, recursive folder scans, filesystem watching, and playlists.
-- M3U/M3U8, PLS, and XSPF parsing; incremental ICY metadata demuxing; bounded
-  HTTP playlist loading; and capped exponential reconnect behavior.
-- Radio Browser discovery with SRV mirror failover, country-popular and
-  name-search views, click reporting, bounded responses, and 24-hour SQLite
-  cache fallback. Yaap bundles no default stations; saving is always explicit.
-- Asynchronous OpenSubsonic search/stream URL generation and Jellyfin
-  authentication/library loading through Qt Network.
-- Windows Credential Manager, macOS Keychain, and Linux Secret Service
-  credential backends. Passwords are never written to Yaap's database.
-- Extension API 1.0 with validated manifests, data-only theme packs, declared
-  QML extension slots, explicit permission grants, and sample mod packages.
-- Length-framed, bounded local IPC plus an asynchronous C++ provider SDK and
-  supervised out-of-process sample provider.
-- Federated provider search and playback resolution across external providers,
-  OpenSubsonic, and Jellyfin; secure multi-account settings; station and local
-  library browsers; bounded offline SQLite caches.
-- Digest-bound mod grants, provider request deadlines, bounded logs,
-  crash-loop suppression, Windows Job/Unix resource limits, and a standalone
-  provider/package conformance runner.
+These screenshots were captured from the actual Windows Release application at
+its default 900 × 560 logical-pixel size.
+
+| Ocean | Paper |
+|---|---|
+| ![Yaap Ocean theme](docs/screenshots/ocean.png) | ![Yaap Paper theme](docs/screenshots/paper.png) |
+
+| Synthwave | High Contrast |
+|---|---|
+| ![Yaap Synthwave theme](docs/screenshots/synthwave.png) | ![Yaap High Contrast theme](docs/screenshots/high-contrast.png) |
+
+Ocean renders animated waves, Paper combines a shaped paper-plane window with
+independently moving paper planes, and Synthwave layers its shaped neon frame
+over a mirrored audio spectrum with an adjustable hue. Background effects are
+disabled in the miniplayer.
+
+## Implemented features
+
+### Playback
+
+- Continuous FFmpeg decoding into a bounded 48 kHz stereo float SPSC PCM ring.
+- Interruptible network I/O, 15-second deadlines, seeking, prebuffering,
+  cancellation, reconnect, and capped exponential backoff.
+- Real-time-safe miniaudio output with persistent volume and mute controls.
+- ICY and timed metadata support for live station title, artist, and track data.
+- M3U/M3U8, PLS, and XSPF station playlist parsing.
+
+### Library and services
+
+- Incremental SQLite library indexing using file size and modification time,
+  FFmpeg metadata and artwork extraction, bounded artwork storage, folder
+  watching, playlists, and non-destructive handling of incomplete scans.
+- Radio Browser discovery with mirror failover, country-popular and name-search
+  views, explicit station saving, click reporting, and a bounded offline cache.
+- Paginated OpenSubsonic and Jellyfin search and playback resolution with
+  secrets stored in Windows Credential Manager, macOS Keychain, or Linux Secret
+  Service rather than JSON or SQLite.
+- Federated search across built-in services and enabled provider extensions.
+
+### Interface and extension platform
+
+- Frameless normal and popup windows with persisted sizes and a draggable
+  background; shaped themes keep controls inside declared safe areas.
+- A fixed-size miniplayer with restore, close, playback, mute, volume, and seek
+  controls. Theme animation effects are intentionally disabled while compact.
+- Extension API 1.1 with validated manifests, digest-bound permission grants,
+  data-only theme packs, declared QML slots, and a bounded audio-visualization
+  model for trusted UI extensions.
+- Length-framed local IPC, asynchronous C++ provider SDK, process supervision,
+  request deadlines, bounded logs, crash-loop suppression, and a sample
+  out-of-process provider.
 
 ## Dependencies
 
 - CMake 4.2 or newer
-- Visual Studio 2026 or 2022 on Windows
-- Qt 6.5 or newer with Core, Concurrent, Network, SQL/SQLite, Qt Quick, Quick
+- C++20 compiler
+- Visual Studio 2026 or 2022 on Windows, or Ninja on Linux/macOS
+- Qt 6.5 or newer with Core, Concurrent, Network, SQL/SQLite, Quick, Quick
   Controls, and Quick Dialogs
 - FFmpeg development libraries: `avformat`, `avcodec`, `avutil`, `swresample`
 - miniaudio
 - Catch2 3
-- A global vcpkg installation
+- vcpkg on Windows, Linux, or macOS
 
-FFmpeg, miniaudio, and Catch2 are installed once in the global vcpkg classic
-tree. Yaap explicitly disables manifest mode so it does not create duplicate
-`vcpkg_installed` directories inside the project. Qt also comes from the global
-official prebuilt SDK.
+Yaap uses the global vcpkg classic tree and explicitly disables manifest mode,
+so the project does not create a duplicate `vcpkg_installed` directory. Qt can
+come from an official prebuilt SDK or another CMake package location.
 
-For the current machine, the intended roots are:
+## Configure, build, and test
+
+Install vcpkg once outside the repository and point CMake at the global classic
+tree and your Qt SDK. For example on Windows:
 
 ```powershell
-$env:VCPKG_ROOT = 'G:\CodingLibraries\vcpkg'
-$env:CMAKE_PREFIX_PATH = 'G:\CodingLibraries\Qt\6.11.1\msvc2022_64'
+$env:VCPKG_ROOT = 'C:\src\vcpkg'
+$env:CMAKE_PREFIX_PATH = 'C:\Qt\6.8.3\msvc2022_64'
 & "$env:VCPKG_ROOT\vcpkg.exe" install catch2:x64-windows ffmpeg:x64-windows miniaudio:x64-windows --classic
-cmake --preset windows-vs2026
-cmake --build --preset windows-debug
-ctest --preset windows-debug
+
+cmake --preset windows-vs2022
+cmake --build --preset windows-vs2022-debug
+ctest --preset windows-vs2022-debug
 ```
 
-Every application build recreates a self-contained, per-configuration
-development distribution using Qt's deployment tool. Run it directly without
-adding Qt or vcpkg to `PATH`:
+Visual Studio 2022 is generated at `build/windows-vs2022/Yaap.sln`. Use the
+`windows-vs2026`, `windows-debug`, and `windows-release` presets for Visual
+Studio 2026 and its `.slnx` solution.
+
+Qt Creator can open the repository's top-level `CMakeLists.txt` directly. Select
+the desired CMake preset and a kit whose Qt installation matches
+`CMAKE_PREFIX_PATH`; no separate Qt Creator project files are required.
+
+Linux and macOS use the supplied Ninja presets after `VCPKG_ROOT` and the Qt
+package path are configured:
+
+```sh
+cmake --preset linux-ninja   # or macos-ninja
+cmake --build --preset linux-debug
+ctest --preset linux-debug
+```
+
+## Windows Release distribution
+
+A Windows Release build recreates a self-contained development distribution at
+the project root. Debug builds do not modify it.
 
 ```powershell
-& '.\build\windows-vs2026\distribution\Debug\Yaap.exe'
+cmake --build --preset windows-release
+& '.\distribution\Yaap.exe'
 ```
 
-Release builds are placed in `build/windows-vs2026/distribution/Release`. Set
-the `YAAP_DISTRIBUTION_ROOT` CMake cache variable to choose a different root.
-These folders are development artifacts; installers, signing, license bundles,
-and clean-machine release validation remain part of the production packaging
-work.
+Set the `YAAP_DISTRIBUTION_ROOT` CMake cache variable to choose another Release
+destination. Installers, signing, notarization, and clean-machine release
+validation remain separate release gates.
 
-The generated Visual Studio workspace is:
+## Extension documentation
 
-```text
-build/windows-vs2026/Yaap.slnx
-```
+- [Theme, UI-extension, miniplayer, visualization, and trust model](docs/modding.md)
+- [Provider protocol and C++ SDK](docs/provider-protocol.md)
+- [Extension API compatibility policy](docs/extension-api-policy.md)
+- [Delivered extension milestones and remaining release gates](docs/roadmap.md)
 
-The VS 2022 preset generates the traditional `Yaap.sln` format instead.
+Third-party providers can validate packages with
+`yaap-provider-conformance`. The `samples/mods` directory contains four themes,
+a UI extension, and a provider package; `samples/provider` is a standalone SDK
+consumer example.
 
-## Deliberate prototype measures
+Repository contribution and vulnerability-reporting guidance is available in
+[CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+The first-upload and repository-settings checklist is in
+[docs/github-publishing.md](docs/github-publishing.md).
 
-Every shortcut is also marked with `PROTOTYPE` at its implementation site.
+## Remaining prototype limitations
 
-1. **Polled playback state:** `PlayerController` reads position and completion
-   every 100 ms. Replace this with coalesced playback snapshots from a dedicated
-   playback-control layer.
-2. **Polled producer backpressure:** a full PCM ring makes the non-real-time
-   decoder worker wait in short intervals. Fold this into the asynchronous
-   playback-session cancellation mechanism without adding work to the audio
-   callback.
-3. **Full rescans for watched changes:** directory notifications trigger a
-   debounced recursive rescan. Replace this with an incremental change journal
-   for very large libraries.
-4. **Linux credential adapter:** Linux currently invokes `secret-tool` as an
-   adapter to Secret Service. Replace this with a directly linked libsecret or
-   D-Bus backend for product packaging.
-5. **First-station playlist action:** the prototype UI opens the first valid
-   entry in a station playlist. The parser and loader return every entry; a full
-   station browser still needs to expose that collection.
-6. **Single fixed output format:** all audio is currently 48 kHz stereo float.
-   Keep this as the internal mixer format initially, then add explicit device
-   negotiation and a measured resampling policy.
-7. **Manual mod discovery:** packages are scanned at startup or through the Mods
-   dialog. Add atomic install/update/remove operations before watching this
-   directory or accepting remotely obtained packages.
-8. **Trusted extension execution:** QML extensions run in-process and native
-   providers run as the current user. Permissions currently express consent and
-   feature gating, not OS-enforced containment. The post-1.0 roadmap moves
-   package identity and process hardening ahead of remote distribution.
+- Playback position and completion are coalesced by a 100 ms GUI timer rather
+  than published as playback-session snapshots.
+- Directory notifications still trigger a debounced recursive traversal. File
+  fingerprints avoid rereading metadata for unchanged tracks, but a filesystem
+  change journal would scale better for very large collections.
+- Linux credentials currently use `secret-tool` as the Secret Service adapter.
+- Opening a station playlist from the basic stream dialog selects its first
+  valid entry rather than presenting the complete collection.
+- The internal mixer format is fixed at 48 kHz stereo float; explicit device
+  negotiation is not implemented.
+- Mod installation, updates, and removal are manual. QML extensions remain
+  trusted in-process code, and native providers are not a complete OS sandbox.
 
-The miniaudio callback is not a shortcut: it performs no allocation, locking,
-logging, decoding, Qt calls, or file access.
+Planned audio-product work includes ReplayGain, gapless playback, crossfade,
+equalization, output-device selection, and operating-system media-session
+controls.
 
-## License note
+## Licensing
 
-The application must distribute an LGPL-compatible FFmpeg build without GPL or
-nonfree components, retain its exact build configuration and corresponding
-source, and comply with Qt's selected license. Codec patent obligations require
-a separate release review.
+The repository owner must choose and add the project's own `LICENSE` before
+advertising the repository as open source or accepting code under a stated
+open-source license. No project license is inferred from the licenses of its
+dependencies.
 
-## Next steps toward the full version
-
-The locally implementable work in reevaluated [steps 8–15](docs/roadmap.md) is
-now integrated. Cryptographically signed artifacts still require a real signing
-identity, and live OpenSubsonic/Jellyfin compatibility jobs require pinned test
-servers; the build exposes release gates without inventing either credential.
-
-Audio-product work remains parallel to that extension roadmap: ReplayGain,
-gapless playback, crossfade, EQ, visualizers, output selection, and OS media
-session controls.
+Commercial distribution must use an LGPL-compatible FFmpeg build without GPL
+or nonfree components, retain the applicable build configuration and
+corresponding source offer, comply with the selected Qt license, and include
+the notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+[sbom.spdx.json](sbom.spdx.json). Codec patent obligations require a separate
+release review.

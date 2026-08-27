@@ -19,7 +19,8 @@ bool PlaybackStateMachine::canTransitionTo(const PlaybackState next) const noexc
     case Empty:
         return next == Loading || next == Error;
     case Loading:
-        return next == Ready || next == Buffering || next == Error || next == Empty;
+        return next == Ready || next == Buffering || next == Stopped || next == Error
+            || next == Empty;
     case Ready:
         return next == Playing || next == Buffering || next == Paused || next == Stopped
             || next == Loading || next == Empty || next == Error;
@@ -36,7 +37,7 @@ bool PlaybackStateMachine::canTransitionTo(const PlaybackState next) const noexc
     case Finished:
         return next == Playing || next == Stopped || next == Loading || next == Empty;
     case Error:
-        return next == Loading || next == Empty;
+        return next == Loading || next == Stopped || next == Empty;
     }
 
     return false;
