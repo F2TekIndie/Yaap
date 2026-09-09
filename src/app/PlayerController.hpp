@@ -73,7 +73,7 @@ public:
     [[nodiscard]] bool muted() const noexcept;
 
     Q_INVOKABLE void openFile(const QUrl& url);
-    Q_INVOKABLE void openStream(const QUrl& url, const QString& title = {});
+    Q_INVOKABLE void openStream(const QUrl& url, const QString& title = {}, bool live = false);
     Q_INVOKABLE void openRadioPlaylist(const QUrl& url);
     Q_INVOKABLE void play();
     Q_INVOKABLE void pause();
@@ -131,6 +131,7 @@ private:
     std::filesystem::path m_sourcePath;
     std::string m_sourceUrl;
     bool m_sourceIsNetwork{};
+    bool m_sourceIsLive{};
     QString m_sourceFallbackTitle;
     QString m_title{"No track selected"};
     QString m_nowPlayingText;

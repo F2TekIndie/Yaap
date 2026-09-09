@@ -70,12 +70,12 @@ int main(int argc, char* argv[])
         &player, [&player](const QUrl& url, const QString&) { player.openFile(url); });
     QObject::connect(&radio, &yaap::RadioController::playbackRequested,
         &player, [&player](const QUrl& url, const QString& title) {
-            player.openStream(url, title);
+            player.openStream(url, title, true);
         });
     QObject::connect(&radioDirectory,
         &yaap::RadioBrowserDirectoryModel::playbackRequested,
         &player, [&player](const QUrl& url, const QString& title) {
-            player.openStream(url, title);
+            player.openStream(url, title, true);
         });
     QObject::connect(&radioDirectory,
         &yaap::RadioBrowserDirectoryModel::saveRequested,

@@ -177,11 +177,12 @@ void PlayerController::openFile(const QUrl& url)
     m_sourcePath = filesystemPath(localPath);
     m_sourceUrl.clear();
     m_sourceIsNetwork = false;
+    m_sourceIsLive = false;
     m_sourceFallbackTitle = QFileInfo(localPath).completeBaseName();
     startStream(StreamStartMode::Ready, true);
 }
 
-void PlayerController::openStream(const QUrl& url, const QString& title)
+void PlayerController::openStream(const QUrl& url, const QString& title, const bool live)
 {
     if (!url.isValid() || (url.scheme() != "http" && url.scheme() != "https")) {
         setError("A valid HTTP or HTTPS stream URL is required.");
@@ -190,6 +191,7 @@ void PlayerController::openStream(const QUrl& url, const QString& title)
     m_sourceUrl = url.toString(QUrl::FullyEncoded).toStdString();
     m_sourcePath.clear();
     m_sourceIsNetwork = true;
+    m_sourceIsLive = live;
     m_sourceFallbackTitle = title.trimmed().isEmpty() ? url.host() : title.trimmed();
     startStream(StreamStartMode::AutoPlay, true);
 }
@@ -206,7 +208,7 @@ void PlayerController::openRadioPlaylist(const QUrl& url)
             return;
         }
         const auto& station = result.stations.front();
-        openStream(station.streamUrl, station.name);
+        openStream(station.streamUrl, station.name, true);
     });
 }
 
@@ -348,7 +350,7 @@ void PlayerController::startStream(
                     }
                     if (!sharedResult->succeeded()) {
                         const auto error = QString::fromUtf8(sharedResult->error);
-                        if (guardedThis->m_sourceIsNetwork) {
+                        if (guardedThis->m_sourceIsLive) {
                             guardedThis->scheduleReconnect(error);
                         } else {
                             guardedThis->setError(error);
@@ -522,7 +524,7 @@ void PlayerController::updatePosition()
         && m_output.isFinished()) {
         m_output.pause();
         setState(PlaybackState::Finished);
-        if (m_sourceIsNetwork) {
+        if (m_sourceIsLive) {
             scheduleReconnect("The stream ended.");
         }
         return;
@@ -549,7 +551,7 @@ void PlayerController::updatePosition()
 
 void PlayerController::scheduleReconnect(QString reason)
 {
-    if (!m_sourceIsNetwork || m_reconnectScheduled) {
+    if (!m_sourceIsLive || m_reconnectScheduled) {
         return;
     }
     m_output.pause();

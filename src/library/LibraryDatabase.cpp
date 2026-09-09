@@ -278,7 +278,7 @@ bool LibraryDatabase::upsertTrack(
     query.addBindValue(QString::fromUtf8(track.artist));
     query.addBindValue(QString::fromUtf8(track.album));
     query.addBindValue(QString::fromUtf8(track.artworkSource));
-    query.addBindValue(track.durationMilliseconds);
+    query.addBindValue(static_cast<qlonglong>(track.durationMilliseconds));
     query.addBindValue(rootPath);
     if (!query.exec()) {
         error = queryError(query, "Could not store an indexed track");
@@ -378,7 +378,7 @@ bool LibraryDatabase::setPlaylistTracks(
     }
     QSqlQuery clear{m_database};
     clear.prepare("DELETE FROM playlist_items WHERE playlist_id = ?");
-    clear.addBindValue(playlistId);
+    clear.addBindValue(static_cast<qlonglong>(playlistId));
     if (!clear.exec()) {
         error = queryError(clear, "Could not clear the playlist");
         m_database.rollback();
@@ -388,7 +388,7 @@ bool LibraryDatabase::setPlaylistTracks(
     QSqlQuery insert{m_database};
     insert.prepare("INSERT INTO playlist_items(playlist_id, position, track_id) VALUES(?, ?, ?)");
     for (std::size_t index = 0; index < trackIds.size(); ++index) {
-        insert.bindValue(0, playlistId);
+        insert.bindValue(0, static_cast<qlonglong>(playlistId));
         insert.bindValue(1, static_cast<qlonglong>(index));
         insert.bindValue(2, QString::fromUtf8(trackIds[index]));
         if (!insert.exec()) {

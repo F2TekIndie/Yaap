@@ -123,10 +123,10 @@ void ProviderGateway::search(const QString& query)
         const auto generation = m_generation;
         m_accounts.searchAccount(accountId, query,
             [this, accountId, cacheKey, generation](ProviderTracksResult response) {
-                m_pending = std::max(0, m_pending - 1);
                 if (generation != m_generation) {
                     return;
                 }
+                m_pending = std::max(0, m_pending - 1);
                 if (!response.succeeded()) {
                     m_errorMessage = std::move(response.error);
                     emit stateChanged();
@@ -139,7 +139,7 @@ void ProviderGateway::search(const QString& query)
                         {"artist", QString::fromStdString(track.artist)},
                         {"album", QString::fromStdString(track.album)},
                         {"playbackUrl", QString::fromStdString(track.source)},
-                        {"durationMilliseconds", track.durationMilliseconds}});
+                        {"durationMilliseconds", static_cast<qint64>(track.durationMilliseconds)}});
                 }
                 const QJsonObject result{{"items", items}};
                 QString cacheError;

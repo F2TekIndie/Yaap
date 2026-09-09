@@ -5,7 +5,6 @@
 
 #include <QCryptographicHash>
 #include <QDir>
-#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QDateTime>
@@ -114,6 +113,7 @@ bool LibraryIndexer::addFolder(const QString& path, QString& error)
     }
     if (!m_folders.contains(canonicalPath)) {
         m_folders.push_back(canonicalPath);
+        ++m_folderRevision;
         rescan();
     }
     return true;
@@ -133,6 +133,7 @@ bool LibraryIndexer::removeFolder(const QString& path, QString& error)
         return false;
     }
     m_folders.erase(iterator);
+    ++m_folderRevision;
     rescan();
     return true;
 }
@@ -149,6 +150,7 @@ void LibraryIndexer::rescan()
         return;
     }
     const auto roots = m_folders;
+    const auto folderRevision = m_folderRevision;
     const auto cachePath = m_artworkCachePath;
     QString error;
     auto indexedTracks = m_database.indexedTracks(error);
@@ -162,8 +164,10 @@ void LibraryIndexer::rescan()
         previousTracks.emplace(indexedTrack.track.source, std::move(indexedTrack));
     }
     m_scanWatcher.setFuture(QtConcurrent::run(
-        [roots, cachePath, previousTracks = std::move(previousTracks)] {
-        return scanFolders(roots, cachePath, previousTracks);
+        [roots, cachePath, folderRevision, previousTracks = std::move(previousTracks)] {
+        auto batch = scanFolders(roots, cachePath, previousTracks);
+        batch.folderRevision = folderRevision;
+        return batch;
     }));
 }
 
@@ -186,10 +190,37 @@ LibraryScanBatch LibraryIndexer::scanFolders(
             batch.folders.push_back(std::move(folder));
             continue;
         }
-        QDirIterator iterator{root, QDir::Files, QDirIterator::Subdirectories};
-        while (iterator.hasNext()) {
-            iterator.next();
-            const QFileInfo file = iterator.fileInfo();
+        // Do not silently skip inaccessible subdirectories: deletion is safe only
+        // after a traversal that reports no filesystem errors.
+        std::error_code traversalError;
+        std::filesystem::recursive_directory_iterator iterator{
+            filesystemPath(root), traversalError};
+        const std::filesystem::recursive_directory_iterator end;
+        QList<QFileInfo> files;
+        while (!traversalError && iterator != end) {
+            const auto path = iterator->path();
+#ifdef _WIN32
+            const QFileInfo file{QString::fromStdWString(path.native())};
+#else
+            const QFileInfo file{QString::fromUtf8(path.native())};
+#endif
+            if (iterator->is_directory(traversalError)) {
+                watchedDirectories.insert(file.absoluteFilePath());
+            } else if (!traversalError && iterator->is_regular_file(traversalError)) {
+                files.push_back(file);
+            }
+            if (!traversalError) {
+                iterator.increment(traversalError);
+            }
+        }
+        if (traversalError) {
+            folder.complete = false;
+            if (batch.warnings.size() < maximumScanWarnings) {
+                batch.warnings.push_back("Library traversal failed; keeping prior entries: "
+                    + root + ": " + QString::fromStdString(traversalError.message()));
+            }
+        }
+        for (const auto& file : files) {
             if (!isSupportedAudioFile(file)) {
                 continue;
             }
@@ -265,6 +296,11 @@ LibraryScanBatch LibraryIndexer::scanFolders(
 void LibraryIndexer::applyScan()
 {
     auto batch = m_scanWatcher.future().takeResult();
+    if (batch.folderRevision != m_folderRevision) {
+        m_rescanPending = false;
+        rescan();
+        return;
+    }
     int trackCount = 0;
     bool synchronized = true;
     for (const auto& folder : batch.folders) {

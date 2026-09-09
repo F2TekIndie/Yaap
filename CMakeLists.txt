@@ -377,6 +377,12 @@ if(YAAP_BUILD_APP)
       MACOSX_BUNDLE_GUI_IDENTIFIER "com.yaap.player"
   )
 
+  if(UNIX AND NOT APPLE)
+    # Keep the executable separate from the generated Yaap/ QML module directory.
+    set_target_properties(yaap_app PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
+  endif()
+
   target_link_libraries(
     yaap_app
     PRIVATE
@@ -454,6 +460,18 @@ if(YAAP_BUILD_APP)
     NO_UNSUPPORTED_PLATFORM_ERROR
   )
   install(SCRIPT "${YAAP_QT_DEPLOY_SCRIPT}")
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_custom_target(yaap_distribution ALL
+      COMMAND "${CMAKE_COMMAND}"
+        "-DYAAP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        "-DYAAP_DISTRIBUTION_DIR=${YAAP_DISTRIBUTION_ROOT}/linux"
+        "-DYAAP_DEPLOY_CONFIGURATION=$<CONFIG>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DeployLinux.cmake"
+      DEPENDS yaap_app yaap_provider_conformance
+      COMMENT "Running Release-only Linux distribution step"
+      VERBATIM)
+  endif()
 endif()
 
 install(DIRECTORY samples/mods/ DESTINATION bin/mods)

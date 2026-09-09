@@ -6,6 +6,11 @@
 
 #include <QTemporaryDir>
 #include <QUrl>
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QThread>
+#include <QFile>
+#include <QDir>
 
 namespace yaap {
 
@@ -107,5 +112,76 @@ TEST_CASE("Library playback preserves the stored local file URL")
     CHECK(requested == source);
     CHECK(requested.toLocalFile() == directory.filePath("song.mp3"));
 }
+
+
+TEST_CASE("Removing a folder rejects the in-flight scan snapshot")
+{
+    QTemporaryDir directory;
+    LibraryDatabase database;
+    QString error;
+    REQUIRE(database.open(directory.filePath("library.sqlite3"), error));
+    const auto root = directory.filePath("music");
+    REQUIRE(QDir{}.mkpath(root));
+    REQUIRE(database.synchronizeFolder(root, {{.id = "one",
+        .source = "file:///one.mp3", .title = "One"}}, error));
+    LibraryIndexer indexer{database, directory.filePath("artwork")};
+    bool finished = false;
+    QObject::connect(&indexer, &LibraryIndexer::scanFinished, [&] { finished = true; });
+    // Constructor starts a scan, but its queued completion cannot run until
+    // events are processed below. Remove the root before that completion.
+    REQUIRE(indexer.removeFolder(root, error));
+    QElapsedTimer timer;
+    timer.start();
+    while (!finished && timer.elapsed() < 5000) {
+        QCoreApplication::processEvents();
+        QThread::msleep(1);
+    }
+    REQUIRE(finished);
+    CHECK(database.folders(error).isEmpty());
+    CHECK(database.tracks(error).empty());
+}
+
+#ifndef Q_OS_WIN
+TEST_CASE("An unreadable child directory preserves tracks and playlist membership")
+{
+    QTemporaryDir directory;
+    const auto root = directory.filePath("music");
+    const auto child = root + "/album";
+    REQUIRE(QDir{}.mkpath(child));
+    struct RestorePermissions {
+        QString path;
+        ~RestorePermissions() { QFile::setPermissions(path,
+            QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner); }
+    } restore{child};
+    REQUIRE(QFile::setPermissions(child, QFile::Permissions{}));
+    if (QFileInfo{child}.isReadable()) {
+        SKIP("This user can bypass directory permissions.");
+    }
+    LibraryDatabase database;
+    QString error;
+    REQUIRE(database.open(directory.filePath("library.sqlite3"), error));
+    const auto source = QUrl::fromLocalFile(child + "/song.mp3").toString();
+    REQUIRE(database.synchronizeFolder(root, {{.id = "one",
+        .source = source.toStdString(), .title = "One"}}, error));
+    const auto playlist = database.createPlaylist("Keep", error);
+    REQUIRE(database.setPlaylistTracks(playlist, {"one"}, error));
+    LibraryIndexer indexer{database, directory.filePath("artwork")};
+    bool finished = false;
+    bool warned = false;
+    QObject::connect(&indexer, &LibraryIndexer::scanFinished, [&] { finished = true; });
+    QObject::connect(&indexer, &LibraryIndexer::scanWarning, [&] { warned = true; });
+    QElapsedTimer timer;
+    timer.start();
+    while (!finished && timer.elapsed() < 5000) {
+        QCoreApplication::processEvents();
+        QThread::msleep(1);
+    }
+    REQUIRE(finished);
+    CHECK(warned);
+    CHECK(database.tracks(error).size() == 1);
+    REQUIRE(database.playlists(error).size() == 1);
+    CHECK(database.playlists(error).front().trackIds == std::vector<std::string>{"one"});
+}
+#endif
 
 } // namespace yaap

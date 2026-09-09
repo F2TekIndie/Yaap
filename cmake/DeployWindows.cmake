@@ -27,9 +27,14 @@ if(NOT EXISTS "${YAAP_WINDEPLOYQT}")
   message(FATAL_ERROR "windeployqt does not exist: ${YAAP_WINDEPLOYQT}")
 endif()
 
-# The top-level Release directory is intentionally rebuilt from scratch so a
-# removed dependency cannot remain hidden by a stale DLL or Qt plugin.
-file(REMOVE_RECURSE "${YAAP_DISTRIBUTION_DIR}")
+# Refresh Windows files while preserving the independent Linux distribution.
+file(GLOB _old_entries LIST_DIRECTORIES TRUE "${YAAP_DISTRIBUTION_DIR}/*")
+foreach(_entry IN LISTS _old_entries)
+  get_filename_component(_name "${_entry}" NAME)
+  if(NOT _name STREQUAL "linux")
+    file(REMOVE_RECURSE "${_entry}")
+  endif()
+endforeach()
 file(MAKE_DIRECTORY "${YAAP_DISTRIBUTION_DIR}")
 
 get_filename_component(_app_filename "${YAAP_APP_EXECUTABLE}" NAME)

@@ -122,6 +122,30 @@ Set the `YAAP_DISTRIBUTION_ROOT` CMake cache variable to choose another Release
 destination. Installers, signing, notarization, and clean-machine release
 validation remain separate release gates.
 
+## Linux Release distribution
+
+A Linux Release build refreshes `distribution/linux` automatically. Windows
+Release builds preserve this directory, and Linux builds do not change the
+Windows files in `distribution`. Debug builds do not refresh either layout.
+
+```sh
+cmake --preset linux-release
+cmake --build --preset linux-release
+./distribution/linux/Yaap
+```
+
+The `yaap_distribution` target can also refresh the layout explicitly. It stages
+CMake's install rules and Qt's QML/runtime deployment before replacing the Linux
+directory. The layout includes Qt libraries, plugins, QML imports, sample mods
+and provider, documentation, and license notices. The launcher supplies bundled
+library paths to the application and provider processes.
+
+This is a development distribution for compatible Linux systems, not a universal
+AppImage: system libraries (including system-installed FFmpeg), graphics drivers,
+and Linux Secret Service remain host dependencies. Clean-machine validation and
+dependency license/source compliance remain release gates. A custom
+`YAAP_DISTRIBUTION_ROOT` places Linux output in its `linux` subdirectory.
+
 ## Extension documentation
 
 - [Theme, UI-extension, miniplayer, visualization, and trust model](docs/modding.md)

@@ -20,6 +20,8 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <QSettings>
+#include <QTcpServer>
+#include <QTcpSocket>
 
 #include <functional>
 
@@ -188,6 +190,57 @@ TEST_CASE("Sample provider searches resolves and produces playable local media t
     REQUIRE(spinUntil([&] { return playbackUrl.isValid(); }));
     CHECK(playbackUrl.isLocalFile());
     CHECK(QFileInfo::exists(playbackUrl.toLocalFile()));
+}
+
+
+TEST_CASE("Stale account search responses do not finish a newer search")
+{
+    QSettings{}.remove("providers/accounts-v1");
+    QTemporaryDir directory;
+    QTcpServer server;
+    REQUIRE(server.listen(QHostAddress::LocalHost));
+    QList<QTcpSocket*> requests;
+    QObject::connect(&server, &QTcpServer::newConnection, [&] {
+        while (server.hasPendingConnections()) {
+            auto* socket = server.nextPendingConnection();
+            QObject::connect(socket, &QTcpSocket::readyRead, [&, socket] {
+                socket->readAll();
+                if (!requests.contains(socket)) requests.push_back(socket);
+            });
+        }
+    });
+    PermissionStore permissions;
+    ThemeManager themes;
+    ExtensionRegistry extensions{permissions};
+    ModManager mods{permissions, themes, extensions, {directory.filePath("mods")}};
+    MemoryCredentialStore credentials;
+    CredentialHandleBroker handles{credentials};
+    ProviderAccountStore accounts{credentials, handles};
+    REQUIRE(accounts.addAccount("opensubsonic", "Test",
+        "http://127.0.0.1:" + QString::number(server.serverPort()), "user", "secret"));
+    ProviderExtensionManager providers{mods, permissions, accounts, handles};
+    ProviderCache cache;
+    QString error;
+    REQUIRE(cache.open(directory.filePath("cache.sqlite3"), error));
+    ProviderGateway gateway{providers, cache, accounts};
+    gateway.search("old");
+    REQUIRE(spinUntil([&] { return requests.size() == 1; }));
+    gateway.search("new");
+    REQUIRE(spinUntil([&] { return requests.size() == 2; }));
+    const auto respond = [](QTcpSocket* socket) {
+        socket->write("HTTP/1.1 500 Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        socket->disconnectFromHost();
+    };
+    respond(requests[0]);
+    QElapsedTimer settle;
+    settle.start();
+    spinUntil([&] { return settle.elapsed() >= 200; });
+    CHECK(gateway.loading());
+    CHECK(gateway.errorMessage().isEmpty());
+    respond(requests[1]);
+    REQUIRE(spinUntil([&] { return !gateway.loading(); }));
+    CHECK_FALSE(gateway.errorMessage().isEmpty());
+    QSettings{}.remove("providers/accounts-v1");
 }
 
 } // namespace yaap

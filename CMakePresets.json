@@ -71,6 +71,14 @@
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
       }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux - Ninja Release",
+      "inherits": "linux-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -96,6 +104,10 @@
     {
       "name": "macos-debug",
       "configurePreset": "macos-ninja"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
     }
   ],
   "testPresets": [
@@ -133,6 +145,13 @@
     {
       "name": "macos-debug",
       "configurePreset": "macos-ninja",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
       "output": {
         "outputOnFailure": true
       }

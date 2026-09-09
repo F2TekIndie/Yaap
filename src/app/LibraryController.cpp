@@ -50,7 +50,7 @@ QVariant LibraryController::data(const QModelIndex& index, const int role) const
     case AlbumRole: return QString::fromUtf8(track.album);
     case SourceRole: return QString::fromUtf8(track.source);
     case ArtworkRole: return QString::fromUtf8(track.artworkSource);
-    case DurationRole: return track.durationMilliseconds;
+    case DurationRole: return static_cast<qlonglong>(track.durationMilliseconds);
     default: return {};
     }
 }

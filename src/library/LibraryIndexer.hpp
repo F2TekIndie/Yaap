@@ -25,6 +25,7 @@ struct LibraryScanBatch final {
     std::vector<LibraryFolderScan> folders;
     QStringList watchedDirectories;
     QStringList warnings;
+    quint64 folderRevision{};
 };
 
 class LibraryIndexer final : public QObject {
@@ -63,6 +64,7 @@ private:
     QTimer m_rescanDebounce;
     QFutureWatcher<LibraryScanBatch> m_scanWatcher;
     bool m_rescanPending{};
+    quint64 m_folderRevision{};
 };
 
 } // namespace yaap

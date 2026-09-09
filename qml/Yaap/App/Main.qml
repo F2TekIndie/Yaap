@@ -174,7 +174,7 @@ ApplicationWindow {
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: playlistMode.checked
             ? Player.openRadioPlaylist(streamUrl.text)
-            : Player.openStream(streamUrl.text, streamName.text)
+            : Player.openStream(streamUrl.text, streamName.text, liveStream.checked)
 
         contentItem: ColumnLayout {
             Label { text: "HTTP(S) stream URL" }
@@ -185,6 +185,12 @@ ApplicationWindow {
             }
             Label { text: "Display name (optional)" }
             TextField { id: streamName; Layout.fillWidth: true }
+            CheckBox {
+                id: liveStream
+                text: "Live radio (reconnect when the stream ends)"
+                checked: true
+                enabled: !playlistMode.checked
+            }
             CheckBox {
                 id: playlistMode
                 text: "URL is an M3U, PLS, or XSPF station playlist"
