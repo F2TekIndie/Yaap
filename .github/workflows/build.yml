@@ -74,7 +74,12 @@ jobs:
         run: cmake --build --preset "${{ matrix.build }}"
       - name: Test
         shell: bash
-        run: ctest --preset "${{ matrix.test }}" --output-on-failure
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            dbus-run-session -- ctest --preset "${{ matrix.test }}" --output-on-failure
+          else
+            ctest --preset "${{ matrix.test }}" --output-on-failure
+          fi
       - name: Validate release metadata and stage installation
         shell: bash
         run: |
@@ -124,4 +129,4 @@ jobs:
         run: |
           cmake --preset linux-ninja -DYAAP_ENABLE_SANITIZERS=ON
           cmake --build --preset linux-debug
-          ctest --preset linux-debug --output-on-failure
+          dbus-run-session -- ctest --preset linux-debug --output-on-failure
