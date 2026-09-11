@@ -19,6 +19,5 @@ struct ApiVersion final {
 
 inline constexpr ApiVersion extensionApiVersion{1, 1};
 inline constexpr int modManifestSchemaVersion = 1;
-inline constexpr int providerProtocolVersion = 1;
 
 } // namespace yaap

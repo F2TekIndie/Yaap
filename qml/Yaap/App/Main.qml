@@ -129,7 +129,20 @@ ApplicationWindow {
     onHeightChanged: if (presentationInitialized && !presentationTransitioning)
         geometrySaveTimer.restart()
     onScreenChanged: Qt.callLater(reclampPresentationGeometry)
-    onClosing: savePresentationGeometry()
+    onClosing: function(close) {
+        savePresentationGeometry()
+        close.accepted = Session.handleClose()
+    }
+    Connections {
+        target: Session
+        function onActivationRequested() { root.restoreFullPlayer() }
+        function onMiniPlayerActivationRequested() { root.enterMiniPlayer() }
+        function onQuitRequested() {
+            root.savePresentationGeometry()
+            root.applicationClosing = true
+        }
+    }
+    Shortcut { sequence: "Ctrl+Q"; onActivated: Session.quit() }
 
     Timer {
         id: geometrySaveTimer
@@ -169,7 +182,7 @@ ApplicationWindow {
         defaultHeight: 320
         minimumWidth: 480
         minimumHeight: 280
-        title: "Open internet radio or provider stream"
+        title: "Open internet stream"
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: playlistMode.checked
@@ -199,415 +212,16 @@ ApplicationWindow {
     }
 
     FramelessDialog {
-        id: trustDialog
-        settingsKey: "trust-mod"
-        defaultWidth: 600
-        defaultHeight: 390
-        minimumWidth: 520
-        minimumHeight: 340
-        property string pendingModId
-        property var requestedPermissions: []
-        property bool activateThemeAfterGrant: false
-        property string pendingPublisher
-        property string pendingDigest
-
-        title: "Trust third-party mod?"
-        modal: true
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        onAccepted: {
-            if (Mods.grantDeclared(pendingModId)) {
-                if (activateThemeAfterGrant)
-                    Mods.activateTheme(pendingModId)
-                else
-                    Mods.setEnabled(pendingModId, true)
-            }
-            activateThemeAfterGrant = false
-        }
-        onRejected: activateThemeAfterGrant = false
-
-        contentItem: ColumnLayout {
-            Label {
-                Layout.fillWidth: true
-                text: ModApi.trustWarning
-                color: Theme.error
-                wrapMode: Text.Wrap
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Requested permissions:\n" + trustDialog.requestedPermissions.join("\n")
-                color: Theme.primaryText
-                wrapMode: Text.Wrap
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Declared publisher: " + trustDialog.pendingPublisher
-                    + "\nSHA-256: " + trustDialog.pendingDigest
-                color: Theme.secondaryText
-                wrapMode: Text.WrapAnywhere
-            }
-        }
-    }
-
-    FramelessDialog {
-        id: modsDialog
-        settingsKey: "mods"
+        id: settingsDialog
+        settingsKey: "settings"
         defaultWidth: 760
-        defaultHeight: 520
+        defaultHeight: 620
         minimumWidth: 640
         minimumHeight: 420
-        title: "Mods and themes — API " + ModApi.version
+        title: "Settings"
         modal: true
         standardButtons: Dialog.Close
-
-        contentItem: ColumnLayout {
-            spacing: Theme.spacing
-
-            Label {
-                Layout.fillWidth: true
-                visible: Mods.errorMessage.length > 0
-                text: Mods.errorMessage
-                color: Theme.error
-                wrapMode: Text.Wrap
-            }
-
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                spacing: Theme.spacing
-                model: Mods
-
-                delegate: ThemedPanel {
-                    required property string modId
-                    required property string name
-                    required property string version
-                    required property var kinds
-                    required property var permissions
-                    required property bool modEnabled
-                    required property bool permissionsGranted
-                    required property string diagnostic
-                    required property bool isTheme
-                    required property bool isUiExtension
-                    required property string contentDigest
-                    required property string publisher
-
-                    width: ListView.view.width
-                    height: details.implicitHeight + 24
-
-                    ColumnLayout {
-                        id: details
-                        anchors.fill: parent
-                        anchors.margins: 12
-
-                        Label {
-                            text: name + "  " + version
-                            color: Theme.primaryText
-                            font.bold: true
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: diagnostic.length > 0
-                                ? diagnostic
-                                : kinds.join(", ") + (isUiExtension ? " — trusted in-process code" : "")
-                            color: diagnostic.length > 0 ? Theme.error : Theme.secondaryText
-                            wrapMode: Text.Wrap
-                        }
-                        RowLayout {
-                            Button {
-                                text: modEnabled ? "Disable" : permissionsGranted ? "Enable" : "Review and grant"
-                                enabled: diagnostic.length === 0
-                                onClicked: {
-                                    if (modEnabled) {
-                                        Mods.setEnabled(modId, false)
-                                    } else if (permissionsGranted) {
-                                        Mods.setEnabled(modId, true)
-                                    } else {
-                                        trustDialog.pendingModId = modId
-                                        trustDialog.requestedPermissions = permissions
-                                        trustDialog.activateThemeAfterGrant = false
-                                        trustDialog.pendingPublisher = publisher
-                                        trustDialog.pendingDigest = contentDigest
-                                        trustDialog.open()
-                                    }
-                                }
-                            }
-                            Button {
-                                visible: isTheme
-                                text: Theme.currentThemeId === modId ? "Active theme" : "Use theme"
-                                enabled: diagnostic.length === 0 && Theme.currentThemeId !== modId
-                                onClicked: {
-                                    if (!permissionsGranted) {
-                                        trustDialog.pendingModId = modId
-                                        trustDialog.requestedPermissions = permissions
-                                        trustDialog.activateThemeAfterGrant = true
-                                        trustDialog.pendingPublisher = publisher
-                                        trustDialog.pendingDigest = contentDigest
-                                        trustDialog.open()
-                                    } else {
-                                        Mods.activateTheme(modId)
-                                    }
-                                }
-                            }
-                            Button {
-                                text: "Revoke"
-                                visible: permissionsGranted
-                                onClicked: Mods.revokeAll(modId)
-                            }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            visible: isTheme
-                                && Theme.currentThemeId === modId
-                                && Theme.spectrumHueShiftAdjustable
-
-                            Label {
-                                text: "Background hue"
-                                color: Theme.secondaryText
-                            }
-                            Slider {
-                                id: hueShiftSlider
-
-                                Layout.fillWidth: true
-                                from: -180
-                                to: 180
-                                stepSize: 1
-                                Accessible.name: "Synthwave background hue shift"
-                                onMoved: Theme.spectrumHueShiftDegrees = value
-                                onPressedChanged: if (!pressed) Theme.commitSpectrumHueShift()
-
-                                Binding on value {
-                                    when: !hueShiftSlider.pressed
-                                    value: Theme.spectrumHueShiftDegrees
-                                }
-                            }
-                            Label {
-                                Layout.preferredWidth: 48
-                                text: Math.round(hueShiftSlider.value) + "°"
-                                color: Theme.primaryText
-                                horizontalAlignment: Text.AlignRight
-                            }
-                        }
-                    }
-                }
-            }
-
-            Button { text: "Rescan packages"; onClicked: Mods.refresh() }
-        }
-    }
-
-    FramelessDialog {
-        id: providersDialog
-        settingsKey: "providers"
-        defaultWidth: 780
-        defaultHeight: 560
-        minimumWidth: 640
-        minimumHeight: 420
-        title: "Providers"
-        modal: true
-        standardButtons: Dialog.Close
-
-        contentItem: ColumnLayout {
-            spacing: Theme.spacing
-
-            RowLayout {
-                Layout.fillWidth: true
-                TextField {
-                    id: providerSearch
-                    Layout.fillWidth: true
-                    placeholderText: "Search enabled providers"
-                    Accessible.name: placeholderText
-                    onAccepted: Providers.search(text)
-                }
-                Button {
-                    text: "Search"
-                    enabled: Providers.availableProviderCount > 0 && !Providers.loading
-                    onClicked: Providers.search(providerSearch.text)
-                }
-                CheckBox {
-                    text: "Offline"
-                    checked: Providers.offlineMode
-                    onToggled: Providers.offlineMode = checked
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: Providers.availableProviderCount === 0
-                text: "Enable and trust a provider in Mods, then return here."
-                color: Theme.secondaryText
-                wrapMode: Text.Wrap
-            }
-            Label {
-                Layout.fillWidth: true
-                visible: Providers.errorMessage.length > 0
-                text: Providers.errorMessage
-                color: Theme.error
-                wrapMode: Text.Wrap
-            }
-            BusyIndicator {
-                Layout.alignment: Qt.AlignHCenter
-                running: Providers.loading
-                visible: running
-            }
-
-            ListView {
-                id: providerResults
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                spacing: Theme.spacing
-                model: Providers
-
-                delegate: ThemedPanel {
-                    required property string trackId
-                    required property string title
-                    required property string artist
-                    required property string album
-                    required property string providerId
-                    required property int durationMilliseconds
-
-                    width: ListView.view.width
-                    height: providerDetails.implicitHeight + 24
-
-                    RowLayout {
-                        id: providerDetails
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Label {
-                                Layout.fillWidth: true
-                                text: title
-                                color: Theme.primaryText
-                                font.bold: true
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: (artist.length > 0 ? artist : "Unknown artist")
-                                    + " · " + providerId
-                                color: Theme.secondaryText
-                                elide: Text.ElideRight
-                            }
-                        }
-                        Button {
-                            text: "Play"
-                            Accessible.name: "Play " + title
-                            onClicked: Providers.play(index)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    FramelessDialog {
-        id: accountsDialog
-        settingsKey: "provider-accounts"
-        defaultWidth: 780
-        defaultHeight: 600
-        minimumWidth: 640
-        minimumHeight: 500
-        title: "Provider accounts"
-        modal: true
-        standardButtons: Dialog.Close
-
-        contentItem: ColumnLayout {
-            spacing: Theme.spacing
-
-            GridLayout {
-                Layout.fillWidth: true
-                columns: 2
-                Label { text: "Provider"; color: Theme.secondaryText }
-                ComboBox {
-                    id: accountProvider
-                    Layout.fillWidth: true
-                    model: ["OpenSubsonic", "Jellyfin"]
-                }
-                Label { text: "Name"; color: Theme.secondaryText }
-                TextField { id: accountName; Layout.fillWidth: true; placeholderText: "Home server" }
-                Label { text: "Server"; color: Theme.secondaryText }
-                TextField { id: accountServer; Layout.fillWidth: true; placeholderText: "https://music.example" }
-                Label { text: "Username"; color: Theme.secondaryText }
-                TextField { id: accountUsername; Layout.fillWidth: true }
-                Label { text: "Password"; color: Theme.secondaryText }
-                TextField {
-                    id: accountPassword
-                    Layout.fillWidth: true
-                    echoMode: TextInput.Password
-                }
-            }
-            Button {
-                text: "Add account securely"
-                onClicked: {
-                    const providerId = accountProvider.currentIndex === 0
-                        ? "opensubsonic" : "jellyfin"
-                    if (ProviderAccounts.addAccount(providerId, accountName.text,
-                            accountServer.text, accountUsername.text, accountPassword.text)) {
-                        accountPassword.clear()
-                        accountName.clear()
-                        accountServer.clear()
-                        accountUsername.clear()
-                    }
-                }
-            }
-            Label {
-                Layout.fillWidth: true
-                visible: ProviderAccounts.errorMessage.length > 0
-                text: ProviderAccounts.errorMessage
-                color: Theme.error
-                wrapMode: Text.Wrap
-            }
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                spacing: Theme.spacing
-                model: ProviderAccounts
-                delegate: ThemedPanel {
-                    required property string accountId
-                    required property string providerId
-                    required property string displayName
-                    required property url serverUrl
-                    required property string username
-                    required property bool accountEnabled
-                    required property string status
-                    width: ListView.view.width
-                    height: accountDetails.implicitHeight + 24
-                    ColumnLayout {
-                        id: accountDetails
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        Label {
-                            text: displayName + " · " + providerId
-                            color: Theme.primaryText
-                            font.bold: true
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: username + " @ " + serverUrl + (status.length > 0 ? " — " + status : "")
-                            color: Theme.secondaryText
-                            elide: Text.ElideRight
-                        }
-                        RowLayout {
-                            Button {
-                                text: accountEnabled ? "Disable" : "Enable"
-                                onClicked: ProviderAccounts.setEnabled(accountId, !accountEnabled)
-                            }
-                            Button {
-                                text: "Test connection"
-                                enabled: accountEnabled
-                                onClicked: ProviderAccounts.testConnection(accountId)
-                            }
-                            Button {
-                                text: "Remove"
-                                onClicked: ProviderAccounts.removeAccount(accountId)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        contentItem: SettingsContent {}
     }
 
     FramelessDialog {
@@ -993,7 +607,7 @@ ApplicationWindow {
 
     Loader {
         anchors.fill: parent
-        active: !Presentation.miniPlayer && Theme.backgroundEffect === "waves"
+        active: root.visible && !Presentation.miniPlayer && Theme.backgroundEffect === "waves"
         sourceComponent: Component {
             AnimatedWaveBackground {
                 anchors.fill: parent
@@ -1003,7 +617,7 @@ ApplicationWindow {
 
     Loader {
         anchors.fill: parent
-        active: !Presentation.miniPlayer && Theme.backgroundEffect === "spectrum"
+        active: root.visible && !Presentation.miniPlayer && Theme.backgroundEffect === "spectrum"
         sourceComponent: Component {
             SpectrumBackground {
                 anchors.fill: parent
@@ -1013,7 +627,7 @@ ApplicationWindow {
 
     Loader {
         anchors.fill: parent
-        active: !Presentation.miniPlayer && Theme.backgroundEffect === "paperPlanes"
+        active: root.visible && !Presentation.miniPlayer && Theme.backgroundEffect === "paperPlanes"
         sourceComponent: Component {
             AnimatedPaperPlaneBackground {
                 anchors.fill: parent
@@ -1050,11 +664,9 @@ ApplicationWindow {
         visible: !Presentation.miniPlayer
         enabled: visible
         hostWindow: root
-        onProvidersRequested: providersDialog.open()
-        onAccountsRequested: accountsDialog.open()
         onLibraryRequested: libraryDialog.open()
         onRadioRequested: radioDialog.open()
-        onModsRequested: modsDialog.open()
+        onSettingsRequested: settingsDialog.open()
         onFileRequested: fileDialog.open()
         onStreamRequested: streamDialog.open()
     }

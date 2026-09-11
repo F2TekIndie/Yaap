@@ -15,19 +15,8 @@ enum class ModKind {
     Provider,
 };
 
-struct UiExtensionDefinition final {
-    QString slotId;
-    QString componentPath;
-    int order{};
-};
-
 struct ThemeDefinition final {
     QString dataPath;
-};
-
-struct ProviderDefinition final {
-    QString executablePath;
-    QString providerId;
 };
 
 struct ModManifest final {
@@ -41,10 +30,7 @@ struct ModManifest final {
     ApiVersion minimumApi;
     ApiVersion maximumExclusiveApi;
     std::vector<ModKind> kinds;
-    QStringList permissions;
-    std::vector<UiExtensionDefinition> uiExtensions;
     ThemeDefinition theme;
-    ProviderDefinition provider;
     QString packageRoot;
 
     [[nodiscard]] bool hasKind(ModKind kind) const noexcept;

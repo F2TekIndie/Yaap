@@ -161,7 +161,7 @@ bool PlayerController::isBuffering() const noexcept
 qreal PlayerController::volume() const noexcept { return m_output.volume(); }
 bool PlayerController::muted() const noexcept { return m_output.isMuted(); }
 
-void PlayerController::openFile(const QUrl& url)
+void PlayerController::openFile(const QUrl& url, const QUrl& artwork, const bool autoPlay)
 {
     if (!url.isLocalFile()) {
         setError("Open file accepts local URLs; use Open stream for HTTP(S) audio.");
@@ -179,7 +179,10 @@ void PlayerController::openFile(const QUrl& url)
     m_sourceIsNetwork = false;
     m_sourceIsLive = false;
     m_sourceFallbackTitle = QFileInfo(localPath).completeBaseName();
-    startStream(StreamStartMode::Ready, true);
+    m_artworkSource = artwork.isLocalFile() ? artwork : QUrl{};
+    ++m_sourceRevision;
+    startStream(autoPlay ? StreamStartMode::AutoPlay : StreamStartMode::Ready, true);
+    emit sourceChanged();
 }
 
 void PlayerController::openStream(const QUrl& url, const QString& title, const bool live)
@@ -193,7 +196,10 @@ void PlayerController::openStream(const QUrl& url, const QString& title, const b
     m_sourceIsNetwork = true;
     m_sourceIsLive = live;
     m_sourceFallbackTitle = title.trimmed().isEmpty() ? url.host() : title.trimmed();
+    m_artworkSource = QUrl{};
+    ++m_sourceRevision;
     startStream(StreamStartMode::AutoPlay, true);
+    emit sourceChanged();
 }
 
 void PlayerController::openRadioPlaylist(const QUrl& url)
@@ -215,7 +221,7 @@ void PlayerController::openRadioPlaylist(const QUrl& url)
 void PlayerController::startStream(
     const StreamStartMode mode,
     const bool resetPresentation,
-    const qint64 startPositionMilliseconds)
+    const qint64 startPositionMilliseconds, const bool reportSeek)
 {
     if ((!m_sourceIsNetwork && m_sourcePath.empty())
         || (m_sourceIsNetwork && m_sourceUrl.empty())) {
@@ -263,10 +269,10 @@ void PlayerController::startStream(
     QPointer<PlayerController> guardedThis{this};
     m_decodeThread = std::jthread(
         [guardedThis, generation, sourcePath, sourceUrl, sourceIsNetwork, stream, mode,
-            startPositionMilliseconds](
+            startPositionMilliseconds, reportSeek](
             const std::stop_token stopToken) {
             FFmpegDecoder decoder;
-            const auto readyCallback = [guardedThis, generation, stream, mode](
+            const auto readyCallback = [guardedThis, generation, stream, mode, reportSeek](
                                            const AudioStreamInfo& info) {
                 if (!guardedThis) {
                     return;
@@ -274,7 +280,7 @@ void PlayerController::startStream(
 
                 QMetaObject::invokeMethod(
                     guardedThis,
-                    [guardedThis, generation, stream, mode, info] {
+                    [guardedThis, generation, stream, mode, info, reportSeek] {
                         if (!guardedThis
                             || generation != guardedThis->m_generation.load(std::memory_order_acquire)
                             || guardedThis->m_stream != stream) {
@@ -292,6 +298,9 @@ void PlayerController::startStream(
                         emit guardedThis->durationChanged();
                         emit guardedThis->positionChanged();
                         guardedThis->setState(PlaybackState::Ready);
+                        if (reportSeek) {
+                            emit guardedThis->seekCompleted(guardedThis->m_positionMilliseconds);
+                        }
 
                         if (mode == StreamStartMode::Stopped) {
                             guardedThis->setState(PlaybackState::Stopped);
@@ -400,6 +409,9 @@ void PlayerController::pause()
     }
     m_output.pause();
     setState(PlaybackState::Paused);
+    // Publish the final rendered frame immediately. MPRIS clients stop
+    // extrapolating position as soon as they observe Paused.
+    updatePosition();
 }
 
 void PlayerController::stop()
@@ -447,10 +459,15 @@ void PlayerController::toggleMuted()
     setMuted(!muted());
 }
 
+bool PlayerController::canSeek() const noexcept
+{
+    return hasSource() && !m_sourceIsNetwork && m_durationMilliseconds > 0
+        && !isLoading() && m_stateMachine.state() != PlaybackState::Error;
+}
+
 void PlayerController::seek(const qint64 positionMilliseconds)
 {
-    if ((!m_sourceIsNetwork && m_sourcePath.empty()) || m_sourceIsNetwork
-        || m_durationMilliseconds <= 0) {
+    if (!canSeek()) {
         return;
     }
 
@@ -462,7 +479,7 @@ void PlayerController::seek(const qint64 positionMilliseconds)
         : state == PlaybackState::Paused
             ? StreamStartMode::Paused
             : StreamStartMode::Ready;
-    startStream(mode, false, target);
+    startStream(mode, false, target, true);
 }
 
 void PlayerController::cancelDecode()

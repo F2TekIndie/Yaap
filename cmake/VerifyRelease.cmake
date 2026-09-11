@@ -2,9 +2,8 @@ foreach(_required_file IN ITEMS
     "${YAAP_SOURCE_DIR}/LICENSE"
     "${YAAP_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
     "${YAAP_SOURCE_DIR}/sbom.spdx.json"
-    "${YAAP_SOURCE_DIR}/docs/extension-api-policy.md"
-    "${YAAP_SOURCE_DIR}/sdk/schemas/mod-manifest-v1.schema.json"
-    "${YAAP_SOURCE_DIR}/sdk/schemas/provider-message-v1.schema.json")
+    "${YAAP_SOURCE_DIR}/docs/theme-format-policy.md"
+    "${YAAP_SOURCE_DIR}/docs/schemas/theme-manifest-v1.schema.json")
   if(NOT EXISTS "${_required_file}")
     message(FATAL_ERROR "Release input is missing: ${_required_file}")
   endif()

@@ -129,7 +129,7 @@ void LibraryController::play(const int row)
     }
     const auto& track = m_tracks[static_cast<std::size_t>(row)];
     emit playbackRequested(QUrl{QString::fromUtf8(track.source)},
-        QString::fromStdString(track.title));
+        QString::fromStdString(track.title), QUrl{QString::fromStdString(track.artworkSource)});
 }
 
 void LibraryController::reload()

@@ -72,7 +72,7 @@ public:
     [[nodiscard]] qreal volume() const noexcept;
     [[nodiscard]] bool muted() const noexcept;
 
-    Q_INVOKABLE void openFile(const QUrl& url);
+    Q_INVOKABLE void openFile(const QUrl& url, const QUrl& artwork = {}, bool autoPlay = false);
     Q_INVOKABLE void openStream(const QUrl& url, const QString& title = {}, bool live = false);
     Q_INVOKABLE void openRadioPlaylist(const QUrl& url);
     Q_INVOKABLE void play();
@@ -82,6 +82,11 @@ public:
     Q_INVOKABLE void setVolume(qreal volume);
     Q_INVOKABLE void setMuted(bool muted);
     Q_INVOKABLE void toggleMuted();
+
+    [[nodiscard]] bool hasSource() const noexcept;
+    [[nodiscard]] bool canSeek() const noexcept;
+    [[nodiscard]] quint64 sourceRevision() const noexcept { return m_sourceRevision; }
+    [[nodiscard]] QUrl artworkSource() const { return m_artworkSource; }
 
     // Stops real-time output and requests cancellation of background work.
     // Safe to call repeatedly during application shutdown.
@@ -96,6 +101,8 @@ signals:
     void durationChanged();
     void controlsChanged();
     void volumeChanged();
+    void sourceChanged();
+    void seekCompleted(qint64 positionMilliseconds);
 
 private:
     PlayerController(AudioAnalysisEngine* analysisEngine, QObject* parent);
@@ -110,13 +117,12 @@ private:
     void startStream(
         StreamStartMode mode,
         bool resetPresentation,
-        qint64 startPositionMilliseconds = 0);
+        qint64 startPositionMilliseconds = 0, bool reportSeek = false);
     void cancelDecode();
     void setState(PlaybackState state);
     void setError(QString message);
     void updatePosition();
     void scheduleReconnect(QString reason);
-    [[nodiscard]] bool hasSource() const noexcept;
 
     PlaybackStateMachine m_stateMachine;
     MiniaudioOutput m_output;
@@ -132,6 +138,8 @@ private:
     std::string m_sourceUrl;
     bool m_sourceIsNetwork{};
     bool m_sourceIsLive{};
+    quint64 m_sourceRevision{};
+    QUrl m_artworkSource;
     QString m_sourceFallbackTitle;
     QString m_title{"No track selected"};
     QString m_nowPlayingText;

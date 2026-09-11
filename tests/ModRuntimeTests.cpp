@@ -1,7 +1,5 @@
-#include "mods/ExtensionRegistry.hpp"
 #include "mods/ModManager.hpp"
 #include "mods/ModManifestParser.hpp"
-#include "mods/PermissionStore.hpp"
 #include "mods/ThemeManager.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -42,7 +40,23 @@ QPoint firstTransparentPixel(const QImage& image, const QRect& rectangle)
 
 } // namespace
 
-TEST_CASE("Manifest parser validates API permissions and package-contained paths")
+TEST_CASE("Custom provider packages are rejected")
+{
+    QTemporaryDir directory;
+    writeFile(directory.filePath("manifest.json"), R"json({
+        "schemaVersion":1,
+        "id":"org.example.provider",
+        "name":"Provider",
+        "version":"1.0.0",
+        "api":{"minimum":"1.0","maximumExclusive":"2.0"},
+        "kind":["provider"],
+        "permissions":[]
+    })json");
+    const auto result = ModManifestParser::parsePackage(directory.path());
+    REQUIRE(result.error == "Custom providers are no longer supported.");
+}
+
+TEST_CASE("UI extension packages are rejected")
 {
     QTemporaryDir directory;
     writeFile(directory.filePath("qml/Badge.qml"), "import QtQuick\nItem {}\n");
@@ -59,30 +73,10 @@ TEST_CASE("Manifest parser validates API permissions and package-contained paths
 
     const auto result = ModManifestParser::parsePackage(directory.path());
     INFO(result.error.toStdString());
-    REQUIRE(result.succeeded());
-    CHECK(result.manifest.id == "org.example.sample-ui");
-    CHECK(result.manifest.uiExtensions.size() == 1);
+    REQUIRE(result.error == "UI extensions are no longer supported.");
 }
 
-TEST_CASE("Manifest parser rejects component paths outside the package")
-{
-    QTemporaryDir parent;
-    QDir{}.mkpath(parent.filePath("package"));
-    writeFile(parent.filePath("outside.qml"), "import QtQuick\nItem {}\n");
-    writeFile(parent.filePath("package/manifest.json"), R"json({
-        "schemaVersion":1,
-        "id":"org.example.escape-ui",
-        "name":"Escape",
-        "version":"1.0.0",
-        "api":{"minimum":"1.0","maximumExclusive":"2.0"},
-        "kind":["ui-extension"],
-        "permissions":["ui.extend:settings.pages"],
-        "uiExtensions":[{"slot":"settings.pages","component":"../outside.qml"}]
-    })json");
-    CHECK_FALSE(ModManifestParser::parsePackage(parent.filePath("package")).succeeded());
-}
-
-TEST_CASE("Theme activation is atomic and extension activation requires permission")
+TEST_CASE("Theme activation applies palette and animated background")
 {
     QTemporaryDir directory;
     writeFile(directory.filePath("theme.json"), R"json({
@@ -94,7 +88,7 @@ TEST_CASE("Theme activation is atomic and extension activation requires permissi
     })json");
     ModManifest theme{.id = "org.example.theme", .name = "Theme", .version = "1.0",
         .contentDigest = "test-theme-digest",
-        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .kinds = {ModKind::Theme},
         .theme = {.dataPath = directory.filePath("theme.json")}};
     ThemeManager themes;
     QString error;
@@ -103,18 +97,7 @@ TEST_CASE("Theme activation is atomic and extension activation requires permissi
     CHECK(themes.accent() == QColor{"#00ffff"});
     CHECK(themes.backgroundEffect() == "waves");
 
-    PermissionStore permissions;
-    ExtensionRegistry extensions{permissions};
-    ModManifest ui{.id = "org.example.ui", .name = "UI", .version = "1.0",
-        .contentDigest = "test-ui-digest",
-        .kinds = {ModKind::UiExtension},
-        .permissions = {"ui.extend:nowPlaying.aboveTransport"},
-        .uiExtensions = {{"nowPlaying.aboveTransport", directory.filePath("Badge.qml"), 0}}};
-    extensions.rebuild({ui});
-    CHECK(extensions.rowCount() == 0);
-    REQUIRE(permissions.grantDeclared(ui, error));
-    extensions.rebuild({ui});
-    CHECK(extensions.rowCount() == 1);
+
 }
 
 TEST_CASE("Every bundled sample theme is a valid selectable package")
@@ -223,7 +206,7 @@ TEST_CASE("Theme control layout metadata is strictly bounded")
     })json");
     ModManifest theme{.id = "org.example.invalid-layout", .name = "Invalid layout",
         .version = "1.0", .contentDigest = "invalid-layout-digest",
-        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .kinds = {ModKind::Theme},
         .theme = {.dataPath = directory.filePath("theme.json")}};
 
     ThemeManager themes;
@@ -316,7 +299,7 @@ TEST_CASE("Miniplayer theme effects are forbidden")
     })json");
     ModManifest theme{.id = "org.example.invalid-mini", .name = "Invalid mini",
         .version = "1.0", .contentDigest = "invalid-mini-digest",
-        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .kinds = {ModKind::Theme},
         .theme = {.dataPath = directory.filePath("theme.json")}};
 
     ThemeManager themes;
@@ -337,7 +320,7 @@ TEST_CASE("Theme background effects are restricted to host-owned renderers")
     })json");
     ModManifest theme{.id = "org.example.invalid-effect", .name = "Invalid", .version = "1.0",
         .contentDigest = "invalid-effect-digest",
-        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .kinds = {ModKind::Theme},
         .theme = {.dataPath = directory.filePath("theme.json")}};
 
     ThemeManager themes;
@@ -368,7 +351,7 @@ TEST_CASE("Theme background image composes underneath one host-owned effect")
     })json");
     ModManifest theme{.id = "org.example.image-theme", .name = "Image theme",
         .version = "1.0", .contentDigest = "image-theme-digest",
-        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .kinds = {ModKind::Theme},
         .theme = {.dataPath = directory.filePath("theme.json")},
         .packageRoot = directory.path()};
 
@@ -403,7 +386,7 @@ TEST_CASE("Theme background images cannot escape their package")
     })json");
     ModManifest theme{.id = "org.example.escape-image", .name = "Escape image",
         .version = "1.0", .contentDigest = "escape-image-digest",
-        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .kinds = {ModKind::Theme},
         .theme = {.dataPath = directory.filePath("package/theme.json")},
         .packageRoot = directory.filePath("package")};
 
@@ -428,7 +411,7 @@ TEST_CASE("Theme background image accepts bounded transparent PNG files")
     })json");
     ModManifest theme{.id = "org.example.png-image", .name = "PNG image",
         .version = "1.0", .contentDigest = "png-image-digest",
-        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .kinds = {ModKind::Theme},
         .theme = {.dataPath = directory.filePath("theme.json")},
         .packageRoot = directory.path()};
 
@@ -462,7 +445,7 @@ TEST_CASE("Spectrum theme parameters are strictly bounded")
     })json");
     ModManifest theme{.id = "org.example.invalid-spectrum", .name = "Invalid spectrum",
         .version = "1.0", .contentDigest = "invalid-spectrum-digest",
-        .kinds = {ModKind::Theme}, .permissions = {"theme.install"},
+        .kinds = {ModKind::Theme},
         .theme = {.dataPath = directory.filePath("theme.json")}};
 
     ThemeManager themes;
@@ -471,22 +454,25 @@ TEST_CASE("Spectrum theme parameters are strictly bounded")
     CHECK(error.contains("outside supported bounds"));
 }
 
-TEST_CASE("Mod manager can grant enable and select a bundled theme")
+TEST_CASE("Mod manager selects a bundled theme without grants")
 {
-    PermissionStore permissions;
     ThemeManager themes;
-    ExtensionRegistry extensions{permissions};
-    ModManager mods{permissions, themes, extensions,
+    ModManager mods{themes,
         {QString::fromUtf8(YAAP_SAMPLE_MODS_PATH)}};
 
     constexpr auto themeId = "org.yaap.paper-theme";
-    REQUIRE(mods.grantDeclared(themeId));
     REQUIRE(mods.activateTheme(themeId));
     CHECK(themes.currentThemeId() == themeId);
     CHECK(themes.windowTop() == QColor{"#f8f1e4"});
+    mods.refresh();
+    CHECK(themes.currentThemeId() == themeId);
+    REQUIRE(mods.activateTheme("org.yaap.ocean-theme"));
+    CHECK(themes.currentThemeId() == "org.yaap.ocean-theme");
+    REQUIRE(mods.activateTheme(themeId));
+    CHECK(themes.currentThemeId() == themeId);
 }
 
-TEST_CASE("Changing package content invalidates its permission grant")
+TEST_CASE("Changing package content updates its digest")
 {
     QTemporaryDir directory;
     writeFile(directory.filePath("theme.json"), R"json({
@@ -502,10 +488,7 @@ TEST_CASE("Changing package content invalidates its permission grant")
     })json");
     const auto original = ModManifestParser::parsePackage(directory.path());
     REQUIRE(original.succeeded());
-    PermissionStore permissions;
     QString error;
-    REQUIRE(permissions.grantDeclared(original.manifest, error));
-    REQUIRE(permissions.hasAllDeclared(original.manifest));
 
     writeFile(directory.filePath("theme.json"), R"json({
       "schemaVersion":1,
@@ -516,7 +499,6 @@ TEST_CASE("Changing package content invalidates its permission grant")
     const auto changed = ModManifestParser::parsePackage(directory.path());
     REQUIRE(changed.succeeded());
     CHECK(changed.manifest.contentDigest != original.manifest.contentDigest);
-    CHECK_FALSE(permissions.hasAllDeclared(changed.manifest));
 }
 
 } // namespace yaap

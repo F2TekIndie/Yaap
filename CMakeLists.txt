@@ -9,7 +9,6 @@ project(
 
 option(YAAP_BUILD_APP "Build the Qt Quick desktop application" ON)
 option(YAAP_ENABLE_SANITIZERS "Enable supported address/undefined sanitizers" OFF)
-option(YAAP_BUILD_FUZZERS "Build libFuzzer parser targets with Clang" OFF)
 option(YAAP_REQUIRE_SIGNING "Fail release metadata checks without a signing identity" OFF)
 set(YAAP_SIGNING_IDENTITY "" CACHE STRING "Platform signing certificate thumbprint or identity")
 
@@ -88,9 +87,6 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
     src/extension_api/ApiVersion.hpp
     src/extension_api/ModManifest.cpp
     src/extension_api/ModManifest.hpp
-    src/extension_api/ModPermission.cpp
-    src/extension_api/ModPermission.hpp
-    src/extension_api/ProviderProtocol.hpp
   )
   add_library(Yaap::ExtensionApi ALIAS yaap_extension_api)
   set_target_properties(yaap_extension_api PROPERTIES EXPORT_NAME ExtensionApi)
@@ -105,43 +101,13 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
   yaap_enable_warnings(yaap_extension_api)
 
   add_library(
-    yaap_provider_protocol
-    src/provider_protocol/ProviderProtocolCodec.cpp
-    src/provider_protocol/ProviderProtocolCodec.hpp
-  )
-  add_library(Yaap::ProviderProtocol ALIAS yaap_provider_protocol)
-  set_target_properties(yaap_provider_protocol PROPERTIES EXPORT_NAME ProviderProtocol)
-  target_include_directories(
-    yaap_provider_protocol
-    PUBLIC
-      "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
-      "$<INSTALL_INTERFACE:include>"
-  )
-  target_link_libraries(yaap_provider_protocol PUBLIC Yaap::ExtensionApi Qt6::Core)
-  yaap_enable_warnings(yaap_provider_protocol)
-
-  if(YAAP_BUILD_FUZZERS)
-    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-      message(FATAL_ERROR "YAAP_BUILD_FUZZERS requires Clang or AppleClang")
-    endif()
-    add_executable(yaap_protocol_fuzzer tests/fuzz/ProviderProtocolFuzzer.cpp)
-    target_link_libraries(yaap_protocol_fuzzer PRIVATE Yaap::ProviderProtocol)
-    target_compile_options(yaap_protocol_fuzzer PRIVATE -fsanitize=fuzzer,address)
-    target_link_options(yaap_protocol_fuzzer PRIVATE -fsanitize=fuzzer,address)
-  endif()
-
-  add_library(
     yaap_mod_runtime
-    src/mods/ExtensionRegistry.cpp
-    src/mods/ExtensionRegistry.hpp
     src/mods/ModApiInfo.cpp
     src/mods/ModApiInfo.hpp
     src/mods/ModManager.cpp
     src/mods/ModManager.hpp
     src/mods/ModManifestParser.cpp
     src/mods/ModManifestParser.hpp
-    src/mods/PermissionStore.cpp
-    src/mods/PermissionStore.hpp
     src/mods/ThemeManager.cpp
     src/mods/ThemeManager.hpp
   )
@@ -152,87 +118,6 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
     PUBLIC Yaap::ExtensionApi Qt6::Core Qt6::Gui Qt6::Svg
   )
   yaap_enable_warnings(yaap_mod_runtime)
-
-  add_library(
-    yaap_provider_runtime
-    src/provider_runtime/ProviderExtensionManager.cpp
-    src/provider_runtime/ProviderExtensionManager.hpp
-    src/provider_runtime/ProviderGateway.cpp
-    src/provider_runtime/ProviderGateway.hpp
-    src/provider_runtime/ProviderCache.cpp
-    src/provider_runtime/ProviderCache.hpp
-    src/provider_runtime/ProviderProcessSupervisor.cpp
-    src/provider_runtime/ProviderProcessSupervisor.hpp
-  )
-  add_library(Yaap::ProviderRuntime ALIAS yaap_provider_runtime)
-  target_include_directories(yaap_provider_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-  target_link_libraries(
-    yaap_provider_runtime
-    PUBLIC Yaap::ModRuntime Yaap::ProviderProtocol Qt6::Core Qt6::Network Qt6::Sql
-  )
-  yaap_enable_warnings(yaap_provider_runtime)
-
-  add_library(
-    yaap_provider_sdk
-    sdk/cpp/ProviderApplication.cpp
-    sdk/cpp/ProviderApplication.hpp
-    sdk/cpp/ProviderService.hpp
-  )
-  add_library(Yaap::ProviderSdk ALIAS yaap_provider_sdk)
-  set_target_properties(yaap_provider_sdk PROPERTIES EXPORT_NAME ProviderSdk)
-  target_include_directories(
-    yaap_provider_sdk
-    PUBLIC
-      "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
-      "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
-      "$<INSTALL_INTERFACE:include>"
-  )
-  target_link_libraries(
-    yaap_provider_sdk PUBLIC Yaap::ProviderProtocol Qt6::Core Qt6::Network
-  )
-  yaap_enable_warnings(yaap_provider_sdk)
-
-  add_executable(yaap_sample_provider samples/provider/main.cpp)
-  set_target_properties(yaap_sample_provider PROPERTIES OUTPUT_NAME "YaapSampleProvider")
-  target_link_libraries(yaap_sample_provider PRIVATE Yaap::ProviderSdk)
-  yaap_enable_warnings(yaap_sample_provider)
-
-  add_executable(yaap_provider_conformance tools/provider_conformance/main.cpp)
-  set_target_properties(yaap_provider_conformance PROPERTIES
-    OUTPUT_NAME "yaap-provider-conformance")
-  target_link_libraries(yaap_provider_conformance PRIVATE Yaap::ProviderRuntime)
-  yaap_enable_warnings(yaap_provider_conformance)
-
-  include(CMakePackageConfigHelpers)
-  write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/YaapProviderSdkConfigVersion.cmake"
-    VERSION 1.0.0
-    COMPATIBILITY SameMajorVersion
-  )
-  install(
-    TARGETS yaap_extension_api yaap_provider_protocol yaap_provider_sdk
-    EXPORT YaapProviderSdkTargets
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-  )
-  install(
-    EXPORT YaapProviderSdkTargets
-    FILE YaapProviderSdkTargets.cmake
-    NAMESPACE Yaap::
-    DESTINATION lib/cmake/YaapProviderSdk
-  )
-  install(
-    FILES
-      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/YaapProviderSdkConfig.cmake"
-      "${CMAKE_CURRENT_BINARY_DIR}/YaapProviderSdkConfigVersion.cmake"
-    DESTINATION lib/cmake/YaapProviderSdk
-  )
-  install(DIRECTORY sdk/cpp DESTINATION include/sdk FILES_MATCHING PATTERN "*.hpp")
-  install(DIRECTORY src/extension_api DESTINATION include FILES_MATCHING PATTERN "*.hpp")
-  install(DIRECTORY src/provider_protocol DESTINATION include FILES_MATCHING PATTERN "*.hpp")
-  install(TARGETS yaap_sample_provider RUNTIME DESTINATION share/Yaap/examples)
-  install(TARGETS yaap_provider_conformance RUNTIME DESTINATION bin)
 
   add_library(
     yaap_audio
@@ -276,20 +161,14 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
     src/library/LibraryDatabase.hpp
     src/library/LibraryIndexer.cpp
     src/library/LibraryIndexer.hpp
-    src/providers/ProviderClients.cpp
-    src/providers/ProviderClients.hpp
-    src/providers/ProviderAccountStore.cpp
-    src/providers/ProviderAccountStore.hpp
+    src/provider_runtime/ProviderCache.cpp
+    src/provider_runtime/ProviderCache.hpp
     src/radio/RadioPlaylist.cpp
     src/radio/RadioPlaylist.hpp
     src/radio/RadioPlaylistLoader.cpp
     src/radio/RadioPlaylistLoader.hpp
     src/radio/RadioBrowserClient.cpp
     src/radio/RadioBrowserClient.hpp
-    src/security/CredentialStore.cpp
-    src/security/CredentialStore.hpp
-    src/security/CredentialHandleBroker.cpp
-    src/security/CredentialHandleBroker.hpp
   )
   add_library(Yaap::Services ALIAS yaap_services)
   target_include_directories(yaap_services PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -306,20 +185,13 @@ if(YAAP_BUILD_APP OR BUILD_TESTING)
   )
   target_compile_features(yaap_services PUBLIC cxx_std_20)
   yaap_enable_warnings(yaap_services)
-  if(WIN32)
-    target_link_libraries(yaap_services PRIVATE Advapi32)
-  elseif(APPLE)
-    find_library(YAAP_SECURITY_FRAMEWORK Security REQUIRED)
-    target_link_libraries(yaap_services PRIVATE "${YAAP_SECURITY_FRAMEWORK}")
-  endif()
-  target_link_libraries(yaap_provider_runtime PUBLIC Yaap::Services)
 endif()
 
 if(YAAP_BUILD_APP)
   find_package(
     Qt6 6.5
     REQUIRED
-    COMPONENTS Core Gui Qml Quick QuickControls2 QuickDialogs2
+    COMPONENTS Core Gui Widgets Qml Quick QuickControls2 QuickDialogs2
   )
 
   qt_standard_project_setup(REQUIRES 6.5)
@@ -331,6 +203,10 @@ if(YAAP_BUILD_APP)
   qt_add_executable(
     yaap_app
     src/app/main.cpp
+    src/app/ApplicationSession.cpp
+    src/app/ApplicationSession.hpp
+    src/app/TrayController.cpp
+    src/app/TrayController.hpp
     src/app/AudioVisualizationModel.cpp
     src/app/AudioVisualizationModel.hpp
     src/app/LibraryController.cpp
@@ -347,6 +223,11 @@ if(YAAP_BUILD_APP)
     src/app/WindowPresentationController.hpp
   )
 
+  qt_add_resources(yaap_app "yaap_tray_assets" PREFIX "/yaap"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux"
+    FILES packaging/linux/org.yaap.Yaap.svg)
+  target_link_libraries(yaap_app PRIVATE Qt6::Widgets)
+
   qt_add_qml_module(
     yaap_app
     URI Yaap.App
@@ -354,10 +235,16 @@ if(YAAP_BUILD_APP)
     QML_FILES
       qml/Yaap/App/Main.qml
       qml/Yaap/App/WindowChrome.qml
+      qml/Yaap/App/SettingsContent.qml
       qml/Yaap/App/FullPlayerView.qml
       qml/Yaap/App/MiniPlayerView.qml
       qml/Yaap/App/TransportButton.qml
     RESOURCES
+      qml/Yaap/App/icons/library.svg
+      qml/Yaap/App/icons/radio.svg
+      qml/Yaap/App/icons/open-file.svg
+      qml/Yaap/App/icons/open-stream.svg
+      qml/Yaap/App/icons/settings.svg
       qml/Yaap/App/icons/miniplayer.svg
       qml/Yaap/App/icons/mute.svg
       qml/Yaap/App/icons/pause.svg
@@ -388,7 +275,6 @@ if(YAAP_BUILD_APP)
     PRIVATE
       Yaap::Audio
       Yaap::ModRuntime
-      Yaap::ProviderRuntime
       Yaap::Services
       yaap_ui
       yaap_uiplugin
@@ -400,7 +286,14 @@ if(YAAP_BUILD_APP)
       Qt6::QuickDialogs2
   )
   yaap_enable_warnings(yaap_app)
-  add_dependencies(yaap_app yaap_sample_provider)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Qt6 6.5 REQUIRED COMPONENTS DBus)
+    target_sources(yaap_app PRIVATE src/app/MprisService.cpp src/app/MprisService.hpp)
+    target_link_libraries(yaap_app PRIVATE Qt6::DBus)
+    target_compile_definitions(yaap_app PRIVATE YAAP_HAVE_MPRIS)
+    install(FILES packaging/linux/org.yaap.Yaap.desktop DESTINATION share/applications)
+    install(FILES packaging/linux/org.yaap.Yaap.svg DESTINATION share/icons/hicolor/scalable/apps)
+  endif()
   if(MSVC)
     # Qt 6.11 headers trigger C4702 under MSVC 19.51; keep it disabled only
     # for the Qt-facing executable while retaining /W4 for project code.
@@ -436,7 +329,6 @@ if(YAAP_BUILD_APP)
         "-DYAAP_WINDEPLOYQT=${YAAP_WINDEPLOYQT_EXECUTABLE}"
         "-DYAAP_QML_DIR=${CMAKE_CURRENT_SOURCE_DIR}/qml"
         "-DYAAP_SAMPLE_MODS_DIR=${CMAKE_CURRENT_SOURCE_DIR}/samples/mods"
-        "-DYAAP_SAMPLE_PROVIDER_EXECUTABLE=$<TARGET_FILE:yaap_sample_provider>"
         "-DYAAP_DEPLOY_CONFIGURATION=$<CONFIG>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DeployWindows.cmake"
       COMMENT "Running Release-only Yaap distribution step"
@@ -454,10 +346,18 @@ if(YAAP_BUILD_APP)
     install(DIRECTORY "$<TARGET_FILE_DIR:yaap_app>/"
       DESTINATION bin FILES_MATCHING PATTERN "*.dll")
   endif()
+  set(_yaap_deploy_plugin_options)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND Qt6_VERSION VERSION_GREATER_EQUAL 6.10)
+    # Qt's default deployment may select only xcb. Include the native Wayland
+    # backend for niri and offscreen for isolated startup/lifecycle checks.
+    list(APPEND _yaap_deploy_plugin_options INCLUDE_PLUGINS qwayland qwayland-egl qoffscreen
+      INCLUDE_PLUGIN_TYPES wayland-shell-integration wayland-graphics-integration-client)
+  endif()
   qt_generate_deploy_qml_app_script(
     TARGET yaap_app
     OUTPUT_SCRIPT YAAP_QT_DEPLOY_SCRIPT
     NO_UNSUPPORTED_PLATFORM_ERROR
+    ${_yaap_deploy_plugin_options}
   )
   install(SCRIPT "${YAAP_QT_DEPLOY_SCRIPT}")
 
@@ -468,30 +368,15 @@ if(YAAP_BUILD_APP)
         "-DYAAP_DISTRIBUTION_DIR=${YAAP_DISTRIBUTION_ROOT}/linux"
         "-DYAAP_DEPLOY_CONFIGURATION=$<CONFIG>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DeployLinux.cmake"
-      DEPENDS yaap_app yaap_provider_conformance
+      DEPENDS yaap_app
       COMMENT "Running Release-only Linux distribution step"
       VERBATIM)
   endif()
 endif()
 
-install(DIRECTORY samples/mods/ DESTINATION bin/mods)
-if(WIN32)
-  install(TARGETS yaap_sample_provider
-    RUNTIME DESTINATION bin/mods/org.yaap.sample-provider/bin/windows-x64)
-elseif(APPLE)
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
-    set(_yaap_provider_platform macos-arm64)
-  else()
-    set(_yaap_provider_platform macos-x64)
-  endif()
-  install(TARGETS yaap_sample_provider
-    RUNTIME DESTINATION "bin/mods/org.yaap.sample-provider/bin/${_yaap_provider_platform}")
-else()
-  install(TARGETS yaap_sample_provider
-    RUNTIME DESTINATION bin/mods/org.yaap.sample-provider/bin/linux-x64)
-endif()
+install(DIRECTORY samples/mods/ DESTINATION bin/mods
+  PATTERN "org.yaap.sample-provider" EXCLUDE)
 install(DIRECTORY docs/ DESTINATION share/Yaap/docs)
-install(DIRECTORY sdk/schemas sdk/templates DESTINATION share/Yaap/sdk)
 install(FILES LICENSE THIRD_PARTY_NOTICES.md sbom.spdx.json DESTINATION share/Yaap)
 
 add_custom_target(
@@ -520,6 +405,20 @@ include(CPack)
 
 if(BUILD_TESTING)
   find_package(Catch2 3 CONFIG REQUIRED)
+  if(YAAP_BUILD_APP)
+    add_executable(yaap_settings_ui_smoke tests/SettingsUiSmoke.cpp
+      src/app/TrayController.cpp src/app/TrayController.hpp
+      src/app/ApplicationSession.cpp src/app/ApplicationSession.hpp)
+    target_link_libraries(yaap_settings_ui_smoke PRIVATE Yaap::ModRuntime
+      Qt6::Quick Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Widgets)
+    target_compile_definitions(yaap_settings_ui_smoke PRIVATE
+      YAAP_SAMPLE_MODS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/samples/mods"
+      YAAP_SETTINGS_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/Yaap/App/SettingsContent.qml")
+    add_test(NAME "Settings UI interactions" COMMAND yaap_settings_ui_smoke)
+    set_tests_properties("Settings UI interactions" PROPERTIES
+      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=generic"
+      ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;QT_PLUGIN_PATH=set:$<TARGET_FILE_DIR:Qt6::Core>/../plugins")
+  endif()
 
   add_executable(
     yaap_tests
@@ -541,13 +440,12 @@ if(BUILD_TESTING)
     tests/LibraryDatabaseTests.cpp
     tests/MiniaudioOutputTests.cpp
     tests/ModRuntimeTests.cpp
+    tests/ThemeCustomizationTests.cpp
     tests/PcmStreamTests.cpp
     tests/PlaybackStateTests.cpp
     tests/PlayerControllerTests.cpp
-    tests/ProviderClientTests.cpp
-    tests/ProviderPlatformTests.cpp
-    tests/ProviderProtocolTests.cpp
     tests/RadioTests.cpp
+    tests/CacheTests.cpp
     tests/WindowPresentationControllerTests.cpp
   )
   target_link_libraries(
@@ -555,8 +453,6 @@ if(BUILD_TESTING)
     PRIVATE
       Yaap::Audio
       Yaap::ModRuntime
-      Yaap::ProviderRuntime
-      Yaap::ProviderSdk
       Yaap::Services
       Catch2::Catch2
       Qt6::Core
@@ -565,23 +461,16 @@ if(BUILD_TESTING)
     yaap_tests
     PRIVATE
       YAAP_SAMPLE_MODS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/samples/mods"
-      YAAP_SAMPLE_PROVIDER_PATH="$<TARGET_FILE:yaap_sample_provider>"
   )
   yaap_enable_warnings(yaap_tests)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Qt6 6.5 REQUIRED COMPONENTS DBus)
+    target_sources(yaap_tests PRIVATE src/app/MprisService.cpp src/app/MprisService.hpp
+      src/app/ApplicationSession.cpp src/app/ApplicationSession.hpp tests/MprisTests.cpp tests/DmsThemeTests.cpp)
+    target_link_libraries(yaap_tests PRIVATE Qt6::DBus)
+  endif()
 
   include(Catch)
-  add_test(
-    NAME "Provider SDK standalone conformance runner"
-    COMMAND yaap_provider_conformance
-      --executable $<TARGET_FILE:yaap_sample_provider>
-      --provider-id org.yaap.sample-provider
-  )
-  set_tests_properties(
-    "Provider SDK standalone conformance runner"
-    PROPERTIES
-      ENVIRONMENT_MODIFICATION
-        "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
-  )
   catch_discover_tests(
     yaap_tests
     DISCOVERY_MODE PRE_TEST

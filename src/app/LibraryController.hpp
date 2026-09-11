@@ -56,7 +56,7 @@ signals:
     void scanningChanged();
     void foldersChanged();
     void errorMessageChanged();
-    void playbackRequested(const QUrl& url, const QString& title);
+    void playbackRequested(const QUrl& url, const QString& title, const QUrl& artwork);
 
 private:
     void reload();

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Yaap
+Comment=Play local music, radio, and remote libraries
+Exec=Yaap %u
+Icon=org.yaap.Yaap
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/opus;audio/wav;audio/x-wav;audio/aac;audio/mp4;audio/x-ms-wma;
+StartupNotify=true
+StartupWMClass=org.yaap.Yaap
+Actions=Quit;
+
+[Desktop Action Quit]
+Name=Quit Yaap
+Exec=Yaap --quit

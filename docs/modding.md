@@ -1,34 +1,20 @@
-# Yaap extension API 1.1
+# Yaap theme packages
 
-Yaap discovers extension packages in the distribution `mods` directory and the
+Yaap discovers theme packages in the distribution `mods` directory and the
 user application-data `mods` directory. Each direct child is one package and
 must contain `manifest.json`.
 
-## Trust model
+## Theme validation
 
-- Themes contain validated JSON tokens and are data-only.
-- QML extensions run inside Yaap. They are trusted code, even though the host
-  exposes only versioned singleton APIs and declared extension slots.
-- Provider executables run in a separate process. This isolates crashes and
-  bounds IPC, but it is not an operating-system security sandbox. Install only
-  provider executables you trust until a WASM or native OS sandbox is added.
-
-Yaap requires the user to grant every declared permission before enabling a
-package. Revoking grants disables the package and stops its provider process.
-These declarations support informed consent and host feature gating; they do
-not turn in-process QML or a native executable into a security sandbox. Package
-digest binding, signing, and OS-level containment are tracked in the
-[post-1.0 roadmap](roadmap.md).
-
-Permission grants are stored with the package version and a deterministic
-SHA-256 of every package file. Any content change invalidates the grant. The
-optional publisher fields are displayed as declared identity only; they are
-not a cryptographic signature. Yaap has no remote catalog or automatic mod
-updates while publisher-signature verification remains unavailable.
+Themes contain validated JSON settings and are selected from Settings → Themes.
+There are no permission grants or trust dialogs. Package paths and theme data
+are validated before a theme can be used. Legacy manifest permission fields
+are ignored. Package hashes remain metadata, not an approval requirement.
 
 ## Manifest
 
-The schema version is `1`. Extension API compatibility uses an inclusive
+The [theme manifest schema](schemas/theme-manifest-v1.schema.json) uses version `1`.
+The retained `api` compatibility field uses an inclusive
 minimum and exclusive maximum:
 
 ```json
@@ -38,8 +24,7 @@ minimum and exclusive maximum:
   "name": "My Mod",
   "version": "1.0.0",
   "api": {"minimum": "1.0", "maximumExclusive": "2.0"},
-  "kind": ["theme", "ui-extension", "provider"],
-  "permissions": []
+  "kind": ["theme"]
 }
 ```
 
@@ -154,56 +139,20 @@ still execute no code.
 }
 ```
 
-## UI extensions
+## Supported packages
 
-API 1.x exposes these slots:
+Only data-only theme packages are supported. UI extension packages are rejected,
+including previously installed packages. Animated backgrounds and spectrum
+visualization remain built-in theme features.
 
-- `navigation.primary`
-- `nowPlaying.aboveTransport`
-- `nowPlaying.toolbar.after`
+## Sample packages
 
-Each component requires the matching `ui.extend:<slot>` permission. Components
-can import `Yaap.ModApi 1.0` for `Theme` and read-only API metadata. API 1.1 also
-provides the read-only `AudioVisualization` singleton with 48 logarithmic
-frequency bands, peak levels, center frequencies, RMS, and overall peak. It
-publishes bounded normalized analysis data rather than raw PCM. Extensions that
-consume it remain trusted QML code; ordinary theme packages can only select and
-configure host-owned renderers. Extensions cannot receive the private application
-controllers through a root context.
+Account services and custom provider extensions are no longer supported.
+Provider manifests are rejected, including previously installed packages.
 
-An API 1.1 QML extension can use the model directly:
-
-```qml
-import QtQuick
-import Yaap.ModApi 1.1
-
-Row {
-    Repeater {
-        model: AudioVisualization
-        Rectangle {
-            required property real level
-            required property real frequencyHz
-            width: 4
-            height: level * 100
-            color: Theme.accent
-        }
-    }
-}
-```
-
-Levels and peaks are normalized to `0.0`–`1.0`; frequencies are in hertz. The
-model updates at most about 30 times per second. Consumers must not assume access
-to PCM samples or the audio-device thread.
-
-## Provider extensions
-
-Provider packages declare an executable for each supported platform. Yaap
-launches enabled providers with a random local-socket name, a one-time nonce,
-and protocol version. See [provider-protocol.md](provider-protocol.md).
-
-The sample packages under `samples/mods` demonstrate all three package kinds.
+The sample packages under `samples/mods` demonstrate themes.
 Bundled theme examples include Ocean, the warm light Paper theme, neon
 Synthwave, and a deliberately square High Contrast theme. They are copied into
-the runnable development distribution and can be enabled from the Mods dialog.
+the runnable development distribution and can be selected from Settings → Themes.
 The [README theme gallery](../README.md#sample-themes) shows captures from the
 actual Release application rather than design mockups.

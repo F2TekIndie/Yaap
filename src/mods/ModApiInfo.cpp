@@ -14,9 +14,4 @@ QString ModApiInfo::version() const
     return extensionApiVersion.toString();
 }
 
-QString ModApiInfo::trustWarning() const
-{
-    return "QML extensions execute inside Yaap. Enable only extensions you trust.";
-}
-
 } // namespace yaap

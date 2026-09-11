@@ -8,11 +8,17 @@
 #include <QString>
 #include <QUrl>
 #include <QTimer>
+#include <QVariantList>
+#include <QVariantMap>
 
 namespace yaap {
 
 class ThemeManager final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QString dmsStatus READ dmsStatus NOTIFY dmsStatusChanged)
+    Q_PROPERTY(QVariantList availableThemes READ availableThemes NOTIFY availableThemesChanged)
+    Q_PROPERTY(QVariantList customFields READ customFields CONSTANT)
+    Q_PROPERTY(QVariantMap customValues READ customValues NOTIFY themeChanged)
     Q_PROPERTY(QString currentThemeId READ currentThemeId NOTIFY themeChanged)
     Q_PROPERTY(QColor windowTop READ windowTop NOTIFY themeChanged)
     Q_PROPERTY(QColor windowBottom READ windowBottom NOTIFY themeChanged)
@@ -67,6 +73,12 @@ class ThemeManager final : public QObject {
 public:
     explicit ThemeManager(QObject* parent = nullptr);
 
+    QString dmsStatus() const;
+    QVariantList availableThemes() const;
+    QVariantList customFields() const;
+    QVariantMap customValues() const;
+    Q_INVOKABLE QString useTheme(const QString& id);
+    Q_INVOKABLE QString applyCustom(const QVariantMap& values);
     void resetAvailableThemes();
     bool registerTheme(const ModManifest& manifest, QString& error);
     bool selectTheme(const QString& modId, QString& error);
@@ -125,6 +137,8 @@ public:
     Q_INVOKABLE void commitSpectrumHueShift();
 
 signals:
+    void availableThemesChanged();
+    void dmsStatusChanged();
     void themeChanged();
     void windowShapeChanged();
 
@@ -187,9 +201,15 @@ private:
         QString& error);
 
     QHash<QString, ThemeData> m_themes;
+    QHash<QString, QString> m_themeNames;
     QString m_currentThemeId{"builtin.default"};
     ThemeData m_current;
     QTimer m_huePersistTimer;
+    void refreshDmsTheme();
+    QTimer m_dmsTimer;
+    QString m_dmsStatus;
+    QByteArray m_dmsSignature;
+    ThemeData m_dmsTheme;
 };
 
 } // namespace yaap

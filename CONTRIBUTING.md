@@ -1,8 +1,8 @@
 # Contributing to Yaap
 
 Yaap is currently pre-release software. Small fixes and focused improvements are
-welcome. Please discuss substantial behavior, architecture, provider API, or UI
-modding changes before investing in an implementation.
+welcome. Please discuss substantial behavior, architecture, theme format, or UI
+changes before investing in an implementation.
 
 Yaap is licensed under `LGPL-3.0-only`. Unless separately agreed in writing,
 contributions are submitted under that same project license. Dependency licenses
@@ -20,7 +20,7 @@ Qt binaries, generated build files, user databases, credentials, or media files.
 1. Create a focused branch from the repository's default branch.
 2. Keep the change scoped and follow the established C++ and QML style.
 3. Add or update tests at stable public boundaries when behavior changes.
-4. Update user, provider, modding, or release documentation when applicable.
+4. Update user, theme, or release documentation when applicable.
 5. Update `THIRD_PARTY_NOTICES.md` and `sbom.spdx.json` if dependencies or packaged
    components change.
 6. Run the relevant configure, build, and test presets before opening a pull

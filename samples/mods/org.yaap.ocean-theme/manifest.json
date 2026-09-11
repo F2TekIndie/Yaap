@@ -9,7 +9,6 @@
     "maximumExclusive": "2.0"
   },
   "kind": ["theme"],
-  "permissions": ["theme.install"],
   "theme": {
     "data": "theme.json"
   }

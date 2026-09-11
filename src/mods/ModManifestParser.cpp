@@ -1,6 +1,5 @@
 #include "mods/ModManifestParser.hpp"
 
-#include "extension_api/ModPermission.hpp"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -85,22 +84,6 @@ constexpr qsizetype maximumPackageFiles = 4'096;
     return std::nullopt;
 }
 
-[[nodiscard]] QString platformExecutable(const QJsonObject& executable)
-{
-#ifdef _WIN32
-    constexpr auto platform = "windows-x64";
-#elif defined(__APPLE__)
-#if defined(__aarch64__) || defined(__arm64__)
-    constexpr auto platform = "macos-arm64";
-#else
-    constexpr auto platform = "macos-x64";
-#endif
-#else
-    constexpr auto platform = "linux-x64";
-#endif
-    return executable.value(platform).toString();
-}
-
 } // namespace
 
 ManifestParseResult ModManifestParser::parsePackage(const QString& packageRoot)
@@ -162,6 +145,12 @@ ManifestParseResult ModManifestParser::parsePackage(const QString& packageRoot)
     QSet<int> uniqueKinds;
     for (const auto& value : root.value("kind").toArray()) {
         const auto kind = parseKind(value.toString());
+        if (kind == ModKind::UiExtension) {
+            return {.error = "UI extensions are no longer supported."};
+        }
+        if (kind == ModKind::Provider) {
+            return {.error = "Custom providers are no longer supported."};
+        }
         if (!kind) {
             return {.error = "Manifest contains an unknown mod kind."};
         }
@@ -174,57 +163,12 @@ ManifestParseResult ModManifestParser::parsePackage(const QString& packageRoot)
         return {.error = "Manifest must declare at least one mod kind."};
     }
 
-    for (const auto& value : root.value("permissions").toArray()) {
-        const auto requested = value.toString().trimmed();
-        if (!permission::isKnown(requested)) {
-            return {.error = "Unknown permission: " + requested};
-        }
-        if (!manifest.permissions.contains(requested)) {
-            manifest.permissions.push_back(requested);
-        }
-    }
-
     if (manifest.hasKind(ModKind::Theme)) {
         const auto relativePath = root.value("theme").toObject().value("data").toString("theme.json");
         QString error;
         manifest.theme.dataPath = safePackageFile(canonicalRoot, relativePath, error);
         if (!error.isEmpty()) {
             return {.error = "Invalid theme file: " + error};
-        }
-    }
-
-    if (manifest.hasKind(ModKind::UiExtension)) {
-        for (const auto& value : root.value("uiExtensions").toArray()) {
-            const auto extension = value.toObject();
-            UiExtensionDefinition definition{
-                .slotId = extension.value("slot").toString().trimmed(),
-                .order = extension.value("order").toInt()};
-            QString error;
-            definition.componentPath = safePackageFile(
-                canonicalRoot, extension.value("component").toString(), error);
-            if (definition.slotId.isEmpty() || !error.isEmpty()) {
-                return {.error = "Invalid UI extension declaration: " + error};
-            }
-            const auto slotPermission = permission::uiSlot(definition.slotId);
-            if (!manifest.permissions.contains(slotPermission)) {
-                return {.error = "UI extension is missing permission " + slotPermission};
-            }
-            manifest.uiExtensions.push_back(std::move(definition));
-        }
-        if (manifest.uiExtensions.empty()) {
-            return {.error = "UI extension mod declares no components."};
-        }
-    }
-
-    if (manifest.hasKind(ModKind::Provider)) {
-        const auto provider = root.value("provider").toObject();
-        manifest.provider.providerId = provider.value("id").toString().trimmed();
-        const auto relativeExecutable = platformExecutable(provider.value("executables").toObject());
-        QString error;
-        manifest.provider.executablePath = safePackageFile(
-            canonicalRoot, relativeExecutable, error);
-        if (manifest.provider.providerId.isEmpty() || !error.isEmpty()) {
-            return {.error = "Invalid provider declaration: " + error};
         }
     }
 

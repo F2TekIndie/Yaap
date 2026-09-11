@@ -1,8 +1,8 @@
 # Yaap
 
 Yaap is a cross-platform C++20 and Qt Quick music player. The current 0.2
-prototype plays local files, internet streams, radio stations, OpenSubsonic,
-Jellyfin, and out-of-process provider extensions through FFmpeg and miniaudio.
+prototype plays local files, internet streams, and radio stations through FFmpeg
+and miniaudio. Account services and custom providers have been removed.
 Its interface is frameless, supports a compact miniplayer, and can be restyled
 with validated third-party theme packages.
 
@@ -42,10 +42,6 @@ disabled in the miniplayer.
   watching, playlists, and non-destructive handling of incomplete scans.
 - Radio Browser discovery with mirror failover, country-popular and name-search
   views, explicit station saving, click reporting, and a bounded offline cache.
-- Paginated OpenSubsonic and Jellyfin search and playback resolution with
-  secrets stored in Windows Credential Manager, macOS Keychain, or Linux Secret
-  Service rather than JSON or SQLite.
-- Federated search across built-in services and enabled provider extensions.
 
 ### Interface and extension platform
 
@@ -53,12 +49,9 @@ disabled in the miniplayer.
   background; shaped themes keep controls inside declared safe areas.
 - A fixed-size miniplayer with restore, close, playback, mute, volume, and seek
   controls. Theme animation effects are intentionally disabled while compact.
-- Extension API 1.1 with validated manifests, digest-bound permission grants,
-  data-only theme packs, declared QML slots, and a bounded audio-visualization
-  model for trusted UI extensions.
-- Length-framed local IPC, asynchronous C++ provider SDK, process supervision,
-  request deadlines, bounded logs, crash-loop suppression, and a sample
-  out-of-process provider.
+- Extension API 1.1 with validated manifests,
+  data-only theme packs, and built-in animated backgrounds and audio visualizers.
+  UI extensions are no longer supported.
 
 ## Dependencies
 
@@ -136,27 +129,79 @@ cmake --build --preset linux-release
 
 The `yaap_distribution` target can also refresh the layout explicitly. It stages
 CMake's install rules and Qt's QML/runtime deployment before replacing the Linux
-directory. The layout includes Qt libraries, plugins, QML imports, sample mods
-and provider, documentation, and license notices. The launcher supplies bundled
-library paths to the application and provider processes.
+directory. The layout includes Qt libraries, plugins, QML imports, sample mods,
+documentation, and license notices. The launcher supplies bundled
+library paths to the application.
 
 This is a development distribution for compatible Linux systems, not a universal
-AppImage: system libraries (including system-installed FFmpeg), graphics drivers,
-and Linux Secret Service remain host dependencies. Clean-machine validation and
+AppImage: system libraries (including system-installed FFmpeg), and graphics drivers remain host dependencies. Clean-machine validation and
 dependency license/source compliance remain release gates. A custom
 `YAAP_DISTRIBUTION_ROOT` places Linux output in its `linux` subdirectory.
 
-## Extension documentation
+## Linux shell integration
 
-- [Theme, UI-extension, miniplayer, visualization, and trust model](docs/modding.md)
-- [Provider protocol and C++ SDK](docs/provider-protocol.md)
-- [Extension API compatibility policy](docs/extension-api-policy.md)
-- [Delivered extension milestones and remaining release gates](docs/roadmap.md)
+Yaap exposes `org.mpris.MediaPlayer2.Yaap` on the session bus. DMS/Quickshell and
+other MPRIS clients can display track metadata and control play/pause, stop,
+volume, and local-file seeking. Library artwork is published when available.
+Next/previous, shuffle, and repeat are not advertised because the application
+does not yet connect playback to a queue. Authenticated stream URLs are never
+included in public metadata.
 
-Third-party providers can validate packages with
-`yaap-provider-conformance`. The `samples/mods` directory contains four themes,
-a UI extension, and a provider package; `samples/provider` is a standalone SDK
-consumer example.
+With a working Linux session bus, closing the window keeps Yaap running by
+default. Change this through **Settings → General → Keep playing when the window closes**.
+Reopening Yaap activates the existing window. **Settings → General → Quit Now**,
+**Ctrl+Q**, or `Yaap --quit` stops the process. Hidden windows stop their animated
+backgrounds. Without a session bus, closing the main window exits normally.
+
+While background mode is enabled, Yaap also shows a system tray icon. Left-click
+opens the full player; right-click offers **Open**, **Open miniplayer**, and
+**Quit**. On DMS, the shell renders this exported D-Bus menu. The icon remains
+available while the window is open, disappears when background mode is disabled
+or Yaap quits, and re-registers if the tray host restarts. If no tray host is
+running, reopening Yaap or using MPRIS can still restore the window.
+
+```sh
+./distribution/linux/Yaap --background  # Start hidden
+./distribution/linux/Yaap               # Show the existing instance
+./distribution/linux/Yaap /path/song.flac # Open and play in that instance
+./distribution/linux/Yaap --quit
+```
+
+The installed desktop entry is `org.yaap.Yaap.desktop`; ensure the installed
+`bin` directory is on PATH when using its launcher. Window activation requests
+are subject to the Wayland compositor's focus policy. MPRIS works with the
+shell's existing media UI; animated shell popups require a separate extension.
+
+Linux builds require Qt DBus. Run tests inside a session bus, including in CI:
+
+```sh
+dbus-run-session -- ctest --preset linux-debug --output-on-failure
+```
+
+## Theme documentation
+
+**Settings → Themes** lists Default, loaded theme packages, and Custom. Custom
+starts from the current theme on first use and restores your saved custom theme
+afterwards. Its grouped controls cover colors, layout, background images and
+effects, miniplayer styling, and spectrum settings. Use **Apply custom theme**
+to validate and save edits, or **Revert edits** to discard the draft. The current
+miniplayer size remains fixed at 480 × 112. Background images use local PNG/SVG
+files; keep those files available for subsequent launches.
+
+On Linux, **DMS (DankMaterialShell)** follows the shell's exported light/dark
+palette, corner radius, and popup opacity. Yaap reads the DMS files under the
+XDG cache, config, and state directories and checks for changes once per second
+while this theme is selected. It never modifies DMS settings. Missing or invalid
+data keeps the last valid palette (or Yaap's default until DMS becomes available),
+with a status message in Settings. DMS does not supply Yaap background animations
+or window shapes; use Custom or a loaded theme for those.
+
+The main toolbar uses icons with accessible names and hover tooltips for Library,
+Radio, Open file, Open stream, and Settings.
+
+- [Themes, miniplayer, and visualization](docs/modding.md)
+- [Theme format compatibility policy](docs/theme-format-policy.md)
+- [Player roadmap and remaining release gates](docs/roadmap.md)
 
 Repository contribution and vulnerability-reporting guidance is available in
 [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
@@ -170,17 +215,15 @@ The first-upload and repository-settings checklist is in
 - Directory notifications still trigger a debounced recursive traversal. File
   fingerprints avoid rereading metadata for unchanged tracks, but a filesystem
   change journal would scale better for very large collections.
-- Linux credentials currently use `secret-tool` as the Secret Service adapter.
 - Opening a station playlist from the basic stream dialog selects its first
   valid entry rather than presenting the complete collection.
 - The internal mixer format is fixed at 48 kHz stereo float; explicit device
   negotiation is not implemented.
-- Mod installation, updates, and removal are manual. QML extensions remain
-  trusted in-process code, and native providers are not a complete OS sandbox.
+- Theme installation, updates, and removal are manual.
 
 Planned audio-product work includes ReplayGain, gapless playback, crossfade,
-equalization, output-device selection, and operating-system media-session
-controls.
+equalization, output-device selection, and media-session controls on Windows
+and macOS.
 
 ## Licensing
 

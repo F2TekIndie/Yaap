@@ -10,11 +10,9 @@ Item {
 
     required property var hostWindow
 
-    signal providersRequested()
-    signal accountsRequested()
     signal libraryRequested()
     signal radioRequested()
-    signal modsRequested()
+    signal settingsRequested()
     signal fileRequested()
     signal streamRequested()
 
@@ -33,12 +31,13 @@ Item {
 
         RowLayout {
             id: navigationRow
+            spacing: 4
 
             Layout.fillWidth: true
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 40
-                Layout.minimumWidth: 72
+                Layout.minimumWidth: 48
 
                 Label {
                     anchors.left: parent.left
@@ -57,49 +56,33 @@ Item {
                     onPressed: root.hostWindow.startSystemMove()
                 }
             }
-            Button {
-                id: providersButton
-
-                text: "Providers (" + Providers.availableProviderCount + ")"
-                onClicked: root.providersRequested()
+            TransportButton {
+                iconSource: Qt.resolvedUrl("icons/library.svg")
+                accessibleLabel: "Library"
+                onClicked: root.libraryRequested()
             }
-            Button {
-                text: "Accounts (" + ProviderAccounts.count + ")"
-                onClicked: root.accountsRequested()
+            TransportButton {
+                iconSource: Qt.resolvedUrl("icons/radio.svg")
+                accessibleLabel: "Radio (" + Radio.count + ")"
+                onClicked: root.radioRequested()
             }
-            Button { text: "Library"; onClicked: root.libraryRequested() }
-            Button { text: "Radio (" + Radio.count + ")"; onClicked: root.radioRequested() }
-            Button { text: "Mods"; onClicked: root.modsRequested() }
-            Label { text: Player.stateName; color: Theme.secondaryText }
-        }
-
-        Item {
-            Layout.fillWidth: true
-            Layout.preferredHeight: openActions.implicitHeight
-
-            RowLayout {
-                id: openActions
-
-                anchors.left: parent.left
-                anchors.leftMargin: providersButton.x
-                spacing: Theme.spacing
-
-                Button {
-                    text: "Open file"
-                    enabled: !Player.isLoading
-                    onClicked: root.fileRequested()
-                }
-                Button {
-                    text: "Open stream"
-                    enabled: !Player.isLoading
-                    onClicked: root.streamRequested()
-                }
+            TransportButton {
+                iconSource: Qt.resolvedUrl("icons/open-file.svg")
+                accessibleLabel: "Open file"
+                enabled: !Player.isLoading
+                onClicked: root.fileRequested()
             }
-        }
-
-        ExtensionHost {
-            slotId: "navigation.primary"
-            Layout.fillWidth: true
+            TransportButton {
+                iconSource: Qt.resolvedUrl("icons/open-stream.svg")
+                accessibleLabel: "Open stream"
+                enabled: !Player.isLoading
+                onClicked: root.streamRequested()
+            }
+            TransportButton {
+                iconSource: Qt.resolvedUrl("icons/settings.svg")
+                accessibleLabel: "Settings"
+                onClicked: root.settingsRequested()
+            }
         }
 
         Item { Layout.fillHeight: true }
@@ -134,11 +117,6 @@ Item {
             color: Theme.secondaryText
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideMiddle
-        }
-
-        ExtensionHost {
-            slotId: "nowPlaying.aboveTransport"
-            Layout.fillWidth: true
         }
 
         Label {
@@ -218,16 +196,10 @@ Item {
             }
         }
 
-        ExtensionHost {
-            slotId: "nowPlaying.toolbar.after"
-            Layout.fillWidth: true
-        }
-
         Item { Layout.fillHeight: true }
         Label {
             Layout.fillWidth: true
-            text: "Extension API " + ModApi.version
-                + " · FFmpeg → bounded PCM stream → miniaudio"
+            text: Player.stateName
             color: Theme.secondaryText
             horizontalAlignment: Text.AlignHCenter
         }
