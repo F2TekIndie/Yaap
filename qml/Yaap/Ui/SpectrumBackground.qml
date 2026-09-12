@@ -3,11 +3,12 @@ import Yaap.ModApi 1.1
 
 Item {
     id: root
+    property bool compact: false
 
     clip: true
     enabled: false
 
-    readonly property int columnCount: Math.max(8, Theme.spectrumColumns)
+    readonly property int columnCount: Math.min(compact ? 24 : 48, Math.max(8, Theme.spectrumColumns))
 
     function sourceBandFor(column) {
         if (AudioVisualization.count <= 1 || columnCount <= 1)

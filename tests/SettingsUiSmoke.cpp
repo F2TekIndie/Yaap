@@ -109,16 +109,29 @@ int main(int argc, char** argv)
     actions[1]->trigger();
     if (!check(miniRequested, "Tray menu requests miniplayer")) return 1;
     sections->setProperty("currentIndex", 1);
+    auto* miniChoice = root->findChild<QObject*>("miniBackgroundChoice");
+    if (!check(miniChoice, "Miniplayer effect selector exists")) return 1;
+    miniChoice->setProperty("currentIndex", 2);
+    QMetaObject::invokeMethod(miniChoice, "activated", Q_ARG(int, 2));
+    if (!check(theme.miniBackgroundEffect() == "waves", "Miniplayer selector applies its effect")) return 1;
     const int last = choice->property("count").toInt() - 1;
     choice->setProperty("currentIndex", last);
     QMetaObject::invokeMethod(choice, "activated", Q_ARG(int, last));
     settle();
     if (!check(theme.currentThemeId() == "builtin.custom", "Dropdown selects Custom")) return 1;
-    for (const auto& field : theme.customFields()) {
-        const auto key = field.toMap().value("key").toString();
+    const QStringList commonFields{"windowTop", "windowBottom", "surface", "primaryText",
+        "secondaryText", "accent", "error", "cornerRadius", "spacing", "backgroundEffect", "miniBackgroundEffect"};
+    for (const auto& key : commonFields) {
         auto* loader = visualChild(item, "field-" + key);
-        if (!check(loader && !loader->childItems().isEmpty(), "Every theme field has a loaded editor")) return 1;
+        if (!check(loader && !loader->childItems().isEmpty(), "Common appearance fields have editors")) return 1;
     }
+    if (!check(!visualChild(item, "field-miniPlayerWidth")
+        && !visualChild(item, "field-backgroundImageSource")
+        && !visualChild(item, "field-spectrumOpacity"), "Skin internals and inactive spectrum controls are hidden")) return 1;
+    QMetaObject::invokeMethod(root.get(), "change", Q_ARG(QVariant, "backgroundEffect"), Q_ARG(QVariant, "spectrum"));
+    settle();
+    if (!check(visualChild(item, "field-spectrumOpacity")
+        && visualChild(item, "field-spectrumGradientStart"), "Spectrum exposes its appearance controls")) return 1;
     if (!screenshotDir.isEmpty()) window.grabWindow().save(screenshotDir + "/themes-before-edit.png");
     auto* spacing = visualChild(item, "editor-spacing");
     auto* apply = root->findChild<QObject*>("applyCustom");

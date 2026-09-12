@@ -9,6 +9,9 @@ import Yaap.Ui 1.0
 
 ApplicationWindow {
     id: root
+    readonly property string activeBackgroundEffect: Presentation.miniPlayer
+        ? (Theme.miniBackgroundEffect === "followTheme" ? Theme.backgroundEffect : Theme.miniBackgroundEffect)
+        : Theme.backgroundEffect
 
     // PROTOTYPE: FramelessDialog uses this counter for QML-side modality.
     // Replace it with the planned shared window manager when dialog stacking
@@ -607,7 +610,8 @@ ApplicationWindow {
 
     Loader {
         anchors.fill: parent
-        active: root.visible && !Presentation.miniPlayer && Theme.backgroundEffect === "waves"
+        active: root.visible && root.activeBackgroundEffect === "waves"
+        opacity: Presentation.miniPlayer ? 0.65 : 1
         sourceComponent: Component {
             AnimatedWaveBackground {
                 anchors.fill: parent
@@ -617,9 +621,11 @@ ApplicationWindow {
 
     Loader {
         anchors.fill: parent
-        active: root.visible && !Presentation.miniPlayer && Theme.backgroundEffect === "spectrum"
+        active: root.visible && root.activeBackgroundEffect === "spectrum"
+        opacity: Presentation.miniPlayer ? 0.65 : 1
         sourceComponent: Component {
             SpectrumBackground {
+                compact: Presentation.miniPlayer
                 anchors.fill: parent
             }
         }
@@ -627,9 +633,11 @@ ApplicationWindow {
 
     Loader {
         anchors.fill: parent
-        active: root.visible && !Presentation.miniPlayer && Theme.backgroundEffect === "paperPlanes"
+        active: root.visible && root.activeBackgroundEffect === "paperPlanes"
+        opacity: Presentation.miniPlayer ? 0.65 : 1
         sourceComponent: Component {
             AnimatedPaperPlaneBackground {
+                compact: Presentation.miniPlayer
                 anchors.fill: parent
             }
         }

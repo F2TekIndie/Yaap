@@ -43,6 +43,7 @@ class ThemeManager final : public QObject {
     Q_PROPERTY(qreal backgroundImageOpacity READ backgroundImageOpacity NOTIFY themeChanged)
     Q_PROPERTY(bool backgroundImageShapesWindow READ backgroundImageShapesWindow NOTIFY themeChanged)
     Q_PROPERTY(QString backgroundEffect READ backgroundEffect NOTIFY themeChanged)
+    Q_PROPERTY(QString miniBackgroundEffect READ miniBackgroundEffect WRITE setMiniBackgroundEffect NOTIFY themeChanged)
     Q_PROPERTY(int miniPlayerWidth READ miniPlayerWidth NOTIFY themeChanged)
     Q_PROPERTY(int miniPlayerHeight READ miniPlayerHeight NOTIFY themeChanged)
     Q_PROPERTY(int miniControlAreaLeftInset READ miniControlAreaLeftInset NOTIFY themeChanged)
@@ -107,6 +108,8 @@ public:
     [[nodiscard]] qreal backgroundImageOpacity() const noexcept;
     [[nodiscard]] bool backgroundImageShapesWindow() const noexcept;
     [[nodiscard]] QString backgroundEffect() const;
+    QString miniBackgroundEffect() const;
+    void setMiniBackgroundEffect(const QString& effect);
     [[nodiscard]] int miniPlayerWidth() const noexcept;
     [[nodiscard]] int miniPlayerHeight() const noexcept;
     [[nodiscard]] int miniControlAreaLeftInset() const noexcept;
@@ -167,6 +170,7 @@ private:
         qreal backgroundImageOpacity{1.0};
         bool backgroundImageShapesWindow{};
         QString backgroundEffect{"none"};
+        QString miniBackgroundEffect{"followTheme"};
         int miniPlayerWidth{480};
         int miniPlayerHeight{112};
         int miniControlAreaLeftInset{16};
@@ -205,6 +209,7 @@ private:
     QString m_currentThemeId{"builtin.default"};
     ThemeData m_current;
     QTimer m_huePersistTimer;
+    void restoreMiniEffect();
     void refreshDmsTheme();
     QTimer m_dmsTimer;
     QString m_dmsStatus;

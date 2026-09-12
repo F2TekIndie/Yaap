@@ -200,6 +200,7 @@ bool ThemeManager::selectTheme(const QString& modId, QString& error)
         if (m_huePersistTimer.isActive()) commitSpectrumHueShift();
         m_currentThemeId = modId;
         m_current = m_dmsTheme;
+        restoreMiniEffect();
         QSettings{}.setValue("mods/currentTheme", modId);
         refreshDmsTheme();
         m_dmsTimer.start();
@@ -224,6 +225,7 @@ bool ThemeManager::selectTheme(const QString& modId, QString& error)
     m_dmsTimer.stop();
     m_currentThemeId = modId;
     m_current = iterator.value();
+    restoreMiniEffect();
     QSettings settings;
     if (m_current.spectrumHueShiftAdjustable) {
         bool valid = false;
@@ -731,10 +733,12 @@ bool ThemeManager::readThemeFile(const QString& path,
             }
             const auto miniBackground = miniBackgroundValue.toObject();
             const auto effectValue = miniBackground.value("effect");
-            if (!effectValue.isUndefined() && effectValue.toString("invalid") != "none") {
-                error = "Theme miniplayer background effects are not supported.";
+            const QStringList effects{"followTheme", "none", "waves", "paperPlanes", "spectrum"};
+            if (!effectValue.isUndefined() && !effects.contains(effectValue.toString())) {
+                error = "Theme miniplayer background effect is not supported.";
                 return false;
             }
+            data.miniBackgroundEffect = effectValue.toString("followTheme");
             const auto miniImageValue = miniBackground.value("image");
             if (!miniImageValue.isUndefined()) {
                 if (!miniImageValue.isObject()) {
@@ -810,6 +814,7 @@ QString ThemeManager::useTheme(const QString& id)
 QVariantList ThemeManager::customFields() const
 {
     return {
+        QVariantMap{{"key", "miniBackgroundEffect"}, {"label", "Miniplayer background effect"}, {"group", "Miniplayer animation"}, {"type", "choice"}, {"choices", QStringList{"followTheme", "none", "waves", "paperPlanes", "spectrum"}}},
         QVariantMap{{"key", "windowTop"}, {"label", "Window Top"}, {"group", "Palette"}, {"type", "color"}, {"minimum", 0}, {"maximum", 1}, {"choices", QStringList{}}},
         QVariantMap{{"key", "windowBottom"}, {"label", "Window Bottom"}, {"group", "Palette"}, {"type", "color"}, {"minimum", 0}, {"maximum", 1}, {"choices", QStringList{}}},
         QVariantMap{{"key", "surface"}, {"label", "Surface"}, {"group", "Palette"}, {"type", "color"}, {"minimum", 0}, {"maximum", 1}, {"choices", QStringList{}}},
@@ -888,6 +893,7 @@ QVariantMap ThemeManager::customValues() const
         {"backgroundImageOpacity", m_current.backgroundImageOpacity},
         {"backgroundImageShapesWindow", m_current.backgroundImageShapesWindow},
         {"backgroundEffect", m_current.backgroundEffect},
+        {"miniBackgroundEffect", m_current.miniBackgroundEffect},
         {"miniPlayerWidth", m_current.miniPlayerWidth},
         {"miniPlayerHeight", m_current.miniPlayerHeight},
         {"miniControlAreaLeftInset", m_current.miniControlAreaLeftInset},
@@ -921,13 +927,15 @@ QString ThemeManager::applyCustom(const QVariantMap& values)
 {
     // Validate the entire draft before changing the live theme or saved settings.
     auto normalized = values;
+    // Migrate custom themes saved before miniplayer effects were introduced.
+    if (!normalized.contains("miniBackgroundEffect")) normalized["miniBackgroundEffect"] = "followTheme";
     for (const auto& fieldValue : customFields()) {
         const auto field = fieldValue.toMap();
         const auto key = field.value("key").toString();
         const auto type = field.value("type").toString();
-        const auto value = values.value(key);
+        const auto value = normalized.value(key);
         const auto invalid = field.value("label").toString() + ": invalid value.";
-        if (!values.contains(key)) return invalid;
+        if (!normalized.contains(key)) return invalid;
         if (type == "color") {
             const QColor color{value.toString()};
             if (!color.isValid()) return invalid;
@@ -978,6 +986,7 @@ QString ThemeManager::applyCustom(const QVariantMap& values)
     data.backgroundImageOpacity = normalized.value("backgroundImageOpacity").toDouble();
     data.backgroundImageShapesWindow = normalized.value("backgroundImageShapesWindow").toBool();
     data.backgroundEffect = normalized.value("backgroundEffect").toString();
+    data.miniBackgroundEffect = normalized.value("miniBackgroundEffect").toString();
     data.miniPlayerWidth = normalized.value("miniPlayerWidth").toInt();
     data.miniPlayerHeight = normalized.value("miniPlayerHeight").toInt();
     data.miniControlAreaLeftInset = normalized.value("miniControlAreaLeftInset").toInt();
@@ -1104,8 +1113,37 @@ void ThemeManager::refreshDmsTheme()
     m_dmsSignature = signature;
     m_dmsTheme = data;
     m_current = data;
+    restoreMiniEffect();
     emit themeChanged();
     emit windowShapeChanged();
+}
+
+QString ThemeManager::miniBackgroundEffect() const
+{
+    return m_current.miniBackgroundEffect;
+}
+
+void ThemeManager::restoreMiniEffect()
+{
+    const auto saved = QSettings{}.value("mods/themeSettings/" + m_currentThemeId
+        + "/miniBackgroundEffect", m_current.miniBackgroundEffect).toString();
+    if (QStringList{"followTheme", "none", "waves", "paperPlanes", "spectrum"}.contains(saved))
+        m_current.miniBackgroundEffect = saved;
+}
+
+void ThemeManager::setMiniBackgroundEffect(const QString& effect)
+{
+    if (!QStringList{"followTheme", "none", "waves", "paperPlanes", "spectrum"}.contains(effect)
+        || effect == m_current.miniBackgroundEffect) return;
+    if (m_currentThemeId == "builtin.custom") {
+        auto values = customValues();
+        values["miniBackgroundEffect"] = effect;
+        applyCustom(values);
+        return;
+    }
+    QSettings{}.setValue("mods/themeSettings/" + m_currentThemeId + "/miniBackgroundEffect", effect);
+    m_current.miniBackgroundEffect = effect;
+    emit themeChanged();
 }
 
 } // namespace yaap

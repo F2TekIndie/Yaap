@@ -16,17 +16,18 @@ server information in a public issue.
 Include, where possible:
 
 - the affected commit or version and operating system;
-- the affected playback source, provider, extension, or UI mod boundary;
+- the affected playback source, theme package, shell integration, or UI boundary;
 - the expected and observed security impact;
 - minimal reproduction steps or a proof of concept;
 - sanitized logs, stack traces, or crash dumps; and
 - any known mitigations.
 
-Areas of particular interest include credential handling, provider process and IPC
-boundaries, mod permissions and validation, media/network parsing, radio playlist
-and metadata parsing, and unsafe local-file access.
+Areas of particular interest include authenticated stream URL handling,
+single-instance and MPRIS D-Bus boundaries, theme and image validation,
+media/network parsing, radio playlist and metadata parsing, and unsafe local-file
+access. Providers, accounts, executable/UI extensions, and permission grants are
+not supported by the current application.
 
 The maintainer will acknowledge reports on a best-effort basis, investigate them,
 and coordinate a reasonable disclosure timeline. Please allow time for a fix and
 release before publishing vulnerability details.
-

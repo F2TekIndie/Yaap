@@ -27,6 +27,7 @@ TEST_CASE("Custom themes persist every field and survive theme reloads")
     draft["spectrumColumns"] = 32;
     draft["spectrumHueShiftDegrees"] = 37.5;
     draft["miniControlAreaLeftInset"] = 20;
+    draft["miniBackgroundEffect"] = "paperPlanes";
     REQUIRE(themes.applyCustom(draft).isEmpty());
     const auto saved = themes.customValues();
     REQUIRE(themes.useTheme("builtin.default").isEmpty());
@@ -54,6 +55,7 @@ TEST_CASE("Invalid custom drafts leave both active theme and saved values untouc
     SECTION("Nonfinite number") { draft["spectrumOpacity"] = std::numeric_limits<double>::quiet_NaN(); }
     SECTION("Fractional integer") { draft["spacing"] = 2.5; }
     SECTION("Invalid effect") { draft["backgroundEffect"] = "executable"; }
+    SECTION("Invalid miniplayer effect") { draft["miniBackgroundEffect"] = "executable"; }
     SECTION("No room for controls") { draft["miniControlAreaTopInset"] = 100; }
     SECTION("Missing attribute") { draft.remove("accent"); }
     SECTION("Remote image") { draft["backgroundImageSource"] = "https://example.com/image.png"; }
@@ -61,6 +63,40 @@ TEST_CASE("Invalid custom drafts leave both active theme and saved values untouc
     REQUIRE_FALSE(themes.applyCustom(draft).isEmpty());
     CHECK(themes.customValues() == original);
     CHECK(QSettings{}.value("themes/custom").toMap() == original);
+    QSettings{}.remove("themes/custom");
+    QSettings{}.setValue("mods/currentTheme", "builtin.default");
+}
+
+TEST_CASE("Miniplayer effect overrides persist independently per theme")
+{
+    QSettings{}.remove("mods/themeSettings");
+    ThemeManager themes;
+    ModManager mods{themes, {QString::fromUtf8(YAAP_SAMPLE_MODS_PATH)}};
+    REQUIRE(themes.useTheme("org.yaap.ocean-theme").isEmpty());
+    CHECK(themes.miniBackgroundEffect() == "followTheme");
+    themes.setMiniBackgroundEffect("paperPlanes");
+    themes.setMiniBackgroundEffect("invalid");
+    CHECK(themes.miniBackgroundEffect() == "paperPlanes");
+    REQUIRE(themes.useTheme("builtin.default").isEmpty());
+    CHECK(themes.miniBackgroundEffect() == "followTheme");
+    REQUIRE(themes.useTheme("org.yaap.ocean-theme").isEmpty());
+    CHECK(themes.miniBackgroundEffect() == "paperPlanes");
+    mods.refresh();
+    CHECK(themes.miniBackgroundEffect() == "paperPlanes");
+    ThemeManager restarted;
+    ModManager restored{restarted, {QString::fromUtf8(YAAP_SAMPLE_MODS_PATH)}};
+    CHECK(restarted.miniBackgroundEffect() == "paperPlanes");
+    QSettings{}.remove("mods/themeSettings");
+    QSettings{}.setValue("mods/currentTheme", "builtin.default");
+}
+
+TEST_CASE("Existing custom themes default to following the main animation")
+{
+    ThemeManager themes;
+    auto draft = themes.customValues();
+    draft.remove("miniBackgroundEffect");
+    REQUIRE(themes.applyCustom(draft).isEmpty());
+    CHECK(themes.miniBackgroundEffect() == "followTheme");
     QSettings{}.remove("themes/custom");
     QSettings{}.setValue("mods/currentTheme", "builtin.default");
 }

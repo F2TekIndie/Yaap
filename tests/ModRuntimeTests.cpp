@@ -283,7 +283,7 @@ TEST_CASE("Shaped sample themes keep controls inside their opaque window region"
     }
 }
 
-TEST_CASE("Miniplayer theme effects are forbidden")
+TEST_CASE("Miniplayer themes support host-rendered background effects")
 {
     QTemporaryDir directory;
     writeFile(directory.filePath("theme.json"), R"json({
@@ -304,8 +304,9 @@ TEST_CASE("Miniplayer theme effects are forbidden")
 
     ThemeManager themes;
     QString error;
-    CHECK_FALSE(themes.registerTheme(theme, error));
-    CHECK(error.contains("effects are not supported"));
+    REQUIRE(themes.registerTheme(theme, error));
+    REQUIRE(themes.selectTheme(theme.id, error));
+    CHECK(themes.miniBackgroundEffect() == "spectrum");
 }
 
 TEST_CASE("Theme background effects are restricted to host-owned renderers")

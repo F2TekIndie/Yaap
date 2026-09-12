@@ -41,6 +41,33 @@ Run the release gate before proposing packaging or dependency changes:
 cmake --build build/windows-vs2022 --target yaap_release_gate --config Debug
 ```
 
+For a configured local Linux build:
+
+```sh
+cmake --build build/linux-local
+dbus-run-session -- ctest --test-dir build/linux-local --output-on-failure
+cmake --build build/linux-local --target yaap_release_gate
+git diff --check
+```
+
+The settings UI smoke test exercises General, theme selection, conditional Custom
+controls, applying edits, and tray actions. Linux shell changes also have manual
+integration smoke tests that require an active niri/Wayland session, Python,
+`dbus-run-session`, `gdbus` (MPRIS), and Python `dbus-next` (tray):
+
+```sh
+python3 tests/smoke/MprisSessionSmoke.py distribution/linux/Yaap --niri
+python3 tests/smoke/TraySessionSmoke.py distribution/linux/Yaap
+YAAP_TRAY_TEST_THEME=org.yaap.synthwave-theme \
+  python3 tests/smoke/TraySessionSmoke.py distribution/linux/Yaap
+```
+
+These scripts launch isolated test instances with temporary settings and a
+private session bus. The tray script covers full/miniplayer activation, tray-host
+restart, and Quit; its optional theme variable exercises a bundled animated skin.
+Release builds refresh `distribution/linux`; a documentation-only change can be
+staged with `cmake --build build/linux-local --target yaap_distribution`.
+
 ## Pull requests
 
 Pull requests should explain the problem, the chosen solution, user-visible

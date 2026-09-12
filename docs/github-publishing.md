@@ -13,7 +13,16 @@ data, credentials, local dependency trees, or packaged distributions.
 4. Create an empty GitHub repository. Do not ask GitHub to generate another
    README, `.gitignore`, or license file over this history.
 
-The current local default branch is `master`. It can be pushed as-is:
+Check the branch and remotes before publishing; an integration branch is not
+necessarily the intended default branch:
+
+```sh
+git branch --show-current
+git remote -v
+git tag --list
+```
+
+For a new repository whose chosen default branch is `master`:
 
 ```powershell
 git remote add origin https://github.com/<owner>/Yaap.git

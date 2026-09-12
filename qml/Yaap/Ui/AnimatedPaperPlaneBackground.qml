@@ -5,6 +5,7 @@ import Yaap.ModApi 1.0
 
 Item {
     id: root
+    property bool compact: false
 
     clip: true
     enabled: false
@@ -15,7 +16,7 @@ Item {
         required property int planeIndex
         readonly property real startOffset: Math.random()
         readonly property real speedPixelsPerSecond: 42 + Math.random() * 76
-        readonly property real waveAmplitude: 10 + Math.random() * 24
+        readonly property real waveAmplitude: (10 + Math.random() * 24) * (root.compact ? 0.4 : 1)
         readonly property real waveCycles: 0.8 + Math.random() * 1.65
         readonly property real wavePhase: Math.random() * Math.PI * 2
         readonly property real verticalCenterRatio: 0.12 + Math.random() * 0.76
@@ -35,7 +36,7 @@ Item {
         property color foldColor: Qt.rgba(Theme.primaryText.r,
             Theme.primaryText.g, Theme.primaryText.b, 0.34)
 
-        width: 28 + Math.random() * 24
+        width: (28 + Math.random() * 24) * (root.compact ? 0.65 : 1)
         height: width * 0.58
         x: -width + normalizedPosition * travelDistance
         y: Math.max(6, Math.min(root.height - height - 6, unclampedY))
@@ -99,7 +100,7 @@ Item {
     }
 
     Repeater {
-        model: 11
+        model: root.compact ? 5 : 11
 
         FlyingPlane {
             required property int index

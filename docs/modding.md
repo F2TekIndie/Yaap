@@ -24,7 +24,8 @@ minimum and exclusive maximum:
   "name": "My Mod",
   "version": "1.0.0",
   "api": {"minimum": "1.0", "maximumExclusive": "2.0"},
-  "kind": ["theme"]
+  "kind": ["theme"],
+  "theme": {"data": "theme.json"}
 }
 ```
 
@@ -67,11 +68,11 @@ restore and close pair. `background.image` accepts the same image fields as the
 normal background and can independently set `windowShape`. All compact content
 and both window controls must remain inside an opaque shaped-image region.
 
-Miniplayer effects are intentionally unsupported: the host disables the full
-player's waves, spectrum, and paper-plane renderers while compact. A theme must
-omit `miniPlayer.background.effect` or set it to `none`; any other value rejects
-the theme. This keeps compact rendering quiet and bounded while still permitting
-a static PNG or SVG silhouette.
+`miniPlayer.background.effect` accepts `followTheme` (the default), `none`,
+`waves`, `spectrum`, or `paperPlanes`. Settings lets users override this choice
+per theme. Compact effects render at reduced opacity, with at most 24 spectrum
+columns or five smaller paper planes. Hidden windows unload the renderers.
+Static PNG or SVG silhouettes remain supported alongside the effects.
 
 API 1.1 adds the host-owned `spectrum` background effect. A theme may configure
 8–48 columns,
@@ -139,7 +140,27 @@ still execute no code.
 }
 ```
 
-## Supported packages
+## Custom appearance in Settings
+
+Custom copies the active theme on first use and subsequently restores its saved
+values. The editor exposes 11 common appearance settings: seven palette colors,
+corner radius, spacing, main background effect, and miniplayer background effect.
+When either window explicitly selects Spectrum, four additional controls expose
+the three gradient colors and spectrum opacity. A miniplayer following a main
+Spectrum background also uses these settings.
+
+Skin images, safe-area insets, button geometry, fixed miniplayer dimensions,
+spectrum column count, and animation timing stay in the theme data. They are
+preserved when editing an existing custom theme but are not shown in the form.
+Apply custom theme validates and saves the full draft; Revert edits discards
+unapplied changes. Theme packages can still configure the full format above.
+
+Ocean and High Contrast configure the palette and metrics; Ocean adds Waves.
+Paper adds shaped images, matching control geometry, and Paper planes. Synthwave
+adds shaped images, geometry, and Spectrum parameters. Those skin-specific
+details are the reason the package format is larger than the Custom editor.
+
+## Supported package kinds
 
 Only data-only theme packages are supported. UI extension packages are rejected,
 including previously installed packages. Animated backgrounds and spectrum

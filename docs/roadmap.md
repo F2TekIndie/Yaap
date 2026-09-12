@@ -6,6 +6,12 @@ Yaap supports local music, internet streams, radio discovery, theme packages,
 custom appearance settings, and Linux shell integration through MPRIS and the
 system tray. DMS appearance can be followed from Settings → Themes.
 
+The fixed 480 × 112 miniplayer supports Waves, Paper planes, and Spectrum,
+following the selected theme by default or using a saved per-theme override.
+Hidden windows unload effects. Custom settings expose common appearance choices
+and conditional Spectrum colors/opacity while preserving the underlying skin.
+Linux Release output is isolated in `distribution/linux` from Windows builds.
+
 Provider services, accounts, executable extensions, UI extensions, permission
 grants, and their development kit have been removed. Theme parsing and validation
 remain internal application components.

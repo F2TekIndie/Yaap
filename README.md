@@ -21,8 +21,8 @@ its default 900 × 560 logical-pixel size.
 
 Ocean renders animated waves, Paper combines a shaped paper-plane window with
 independently moving paper planes, and Synthwave layers its shaped neon frame
-over a mirrored audio spectrum with an adjustable hue. Background effects are
-disabled in the miniplayer.
+over a mirrored audio spectrum with an adjustable hue. The miniplayer follows
+the theme's animation by default, with a separate effect choice in Settings.
 
 ## Implemented features
 
@@ -43,29 +43,34 @@ disabled in the miniplayer.
 - Radio Browser discovery with mirror failover, country-popular and name-search
   views, explicit station saving, click reporting, and a bounded offline cache.
 
-### Interface and extension platform
+### Interface and themes
 
 - Frameless normal and popup windows with persisted sizes and a draggable
   background; shaped themes keep controls inside declared safe areas.
 - A fixed-size miniplayer with restore, close, playback, mute, volume, and seek
-  controls. Theme animation effects are intentionally disabled while compact.
-- Extension API 1.1 with validated manifests,
-  data-only theme packs, and built-in animated backgrounds and audio visualizers.
-  UI extensions are no longer supported.
+  controls and subdued animated backgrounds. Hidden windows unload their effects.
+- Validated data-only theme packs using theme format compatibility version 1.1,
+  built-in animated backgrounds, and audio visualization. No external SDK,
+  executable extensions, permission grants, or theme enable/disable switches.
+- Settings with General runtime controls and Themes appearance controls,
+  including a simplified Custom editor and Linux DMS appearance integration.
+- Linux MPRIS controls, single-instance activation, background playback, and
+  a system tray menu for opening either player window or quitting.
 
 ## Dependencies
 
 - CMake 4.2 or newer
 - C++20 compiler
 - Visual Studio 2026 or 2022 on Windows, or Ninja on Linux/macOS
-- Qt 6.5 or newer with Core, Concurrent, Network, SQL/SQLite, Quick, Quick
-  Controls, and Quick Dialogs
+- Qt 6.5 or newer with Core, Concurrent, Gui, Widgets, Network, Qml, SQL/SQLite,
+  Svg, Quick, Quick Controls, and Quick Dialogs; Linux also requires DBus
 - FFmpeg development libraries: `avformat`, `avcodec`, `avutil`, `swresample`
 - miniaudio
 - Catch2 3
-- vcpkg on Windows, Linux, or macOS
+- vcpkg for the supplied presets, or separately installed development dependencies
+  with a direct CMake configuration
 
-Yaap uses the global vcpkg classic tree and explicitly disables manifest mode,
+The supplied presets use the global vcpkg classic tree and explicitly disable manifest mode,
 so the project does not create a duplicate `vcpkg_installed` directory. Qt can
 come from an official prebuilt SDK or another CMake package location.
 
@@ -100,6 +105,19 @@ cmake --preset linux-ninja   # or macos-ninja
 cmake --build --preset linux-debug
 ctest --preset linux-debug
 ```
+
+A direct Linux configuration can use system dependencies without vcpkg:
+
+```sh
+cmake -S . -B build/linux-local -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/gcc_64 -DBUILD_TESTING=ON
+cmake --build build/linux-local
+dbus-run-session -- ctest --test-dir build/linux-local --output-on-failure
+```
+
+If dependencies are outside standard search paths, provide `Catch2_DIR`,
+`MINIAUDIO_INCLUDE_DIR`, `FFMPEG_INCLUDE_DIR`, and the individual
+`FFMPEG_<COMPONENT>_LIBRARY` cache paths. These paths are local machine settings.
 
 ## Windows Release distribution
 
@@ -180,10 +198,12 @@ dbus-run-session -- ctest --preset linux-debug --output-on-failure
 
 ## Theme documentation
 
-**Settings → Themes** lists Default, loaded theme packages, and Custom. Custom
+**Settings → Themes** lists Default, loaded theme packages, Custom, and DMS on Linux. Custom
 starts from the current theme on first use and restores your saved custom theme
-afterwards. Its grouped controls cover colors, layout, background images and
-effects, miniplayer styling, and spectrum settings. Use **Apply custom theme**
+afterwards. Its controls cover seven palette colors, corner radius, spacing,
+and main/miniplayer animation choices. Spectrum colors and opacity appear only
+when Spectrum is selected. Skin images, control positions, and animation timing
+remain inherited from the source theme or existing custom settings. Use **Apply custom theme**
 to validate and save edits, or **Revert edits** to discard the draft. The current
 miniplayer size remains fixed at 480 × 112. Background images use local PNG/SVG
 files; keep those files available for subsequent launches.
@@ -194,7 +214,9 @@ XDG cache, config, and state directories and checks for changes once per second
 while this theme is selected. It never modifies DMS settings. Missing or invalid
 data keeps the last valid palette (or Yaap's default until DMS becomes available),
 with a status message in Settings. DMS does not supply Yaap background animations
-or window shapes; use Custom or a loaded theme for those.
+or window shapes. Its separate **Miniplayer background** selector can still use
+any built-in animation while retaining DMS colors. Use Custom or a loaded theme
+to configure a main-window animation.
 
 The main toolbar uses icons with accessible names and hover tooltips for Library,
 Radio, Open file, Open stream, and Settings.

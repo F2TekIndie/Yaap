@@ -78,6 +78,11 @@ async def main(executable):
     await bus.request_name(WATCHER)
     with tempfile.TemporaryDirectory(prefix="yaap-tray-smoke-") as temporary:
         root = Path(temporary)
+        theme = os.environ.get("YAAP_TRAY_TEST_THEME")
+        if theme:
+            config = root / "config" / "Yaap" / "Yaap.conf"
+            config.parent.mkdir(parents=True)
+            config.write_text("[mods]\ncurrentTheme=" + theme + "\n")
         env = dict(os.environ, XDG_CONFIG_HOME=str(root / "config"),
                    XDG_DATA_HOME=str(root / "data"), XDG_CACHE_HOME=str(root / "cache"),
                    QT_QPA_PLATFORM="wayland",
@@ -154,6 +159,10 @@ async def main(executable):
                 await menu.call_event(quit_id, "clicked", Variant('i', 0), 0)
                 assert await asyncio.wait_for(app.wait(), 10) == 0
                 assert await closed()
+                log.flush()
+                log.seek(0)
+                output = log.read()
+                assert not any(error in output for error in ("ReferenceError:", "TypeError:", "Error loading QML")), output
                 print("PASS: tray registration, exported menu, left click, full/miniplayer actions, host restart, Quit")
             except BaseException:
                 log.flush()

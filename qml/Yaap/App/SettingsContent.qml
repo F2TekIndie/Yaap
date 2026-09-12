@@ -12,10 +12,21 @@ ColumnLayout {
     property string errorMessage: ""
     property string imageKey: ""
     property string colorKey: ""
+    // Skin geometry stays with the source theme; expose appearance choices only.
+    readonly property var visibleCustomFields: Theme.customFields.filter(function(field) {
+        const common = ["windowTop", "windowBottom", "surface", "primaryText",
+            "secondaryText", "accent", "error", "cornerRadius", "spacing",
+            "backgroundEffect", "miniBackgroundEffect"]
+        const spectrum = ["spectrumGradientStart", "spectrumGradientMiddle",
+            "spectrumGradientEnd", "spectrumOpacity"]
+        return common.indexOf(field.key) !== -1
+            || ((draft.backgroundEffect === "spectrum" || draft.miniBackgroundEffect === "spectrum")
+                && spectrum.indexOf(field.key) !== -1)
+    })
 
     function loadDraft() { draft = Object.assign({}, Theme.customValues) }
     function optionLabel(value) {
-        const labels = { none: "None", waves: "Waves", paperPlanes: "Paper planes",
+        const labels = { followTheme: "Follow theme", none: "None", waves: "Waves", paperPlanes: "Paper planes",
             spectrum: "Spectrum", preserveAspectFit: "Fit inside", preserveAspectCrop: "Fill and crop",
             stretch: "Stretch", center: "Center", top: "Top", "top-left": "Top left",
             "top-right": "Top right", left: "Left", right: "Right", bottom: "Bottom",
@@ -94,6 +105,25 @@ ColumnLayout {
                 }
                 Button { text: "Reload themes"; onClicked: Mods.refresh() }
             }
+            RowLayout {
+                Layout.fillWidth: true
+                visible: Theme.currentThemeId !== "builtin.custom"
+                Label { text: "Miniplayer background"; color: Theme.primaryText }
+                ComboBox {
+                    objectName: "miniBackgroundChoice"
+                    Layout.fillWidth: true
+                    model: ["followTheme", "none", "waves", "paperPlanes", "spectrum"]
+                    currentIndex: model.indexOf(Theme.miniBackgroundEffect)
+                    displayText: settings.optionLabel(currentText)
+                    delegate: ItemDelegate {
+                        required property string modelData
+                        width: parent ? parent.width : implicitWidth
+                        text: settings.optionLabel(modelData)
+                    }
+                    onActivated: Theme.miniBackgroundEffect = currentText
+                    Accessible.name: "Miniplayer background effect"
+                }
+            }
             Label {
                 Layout.fillWidth: true
                 visible: settings.errorMessage.length > 0
@@ -105,7 +135,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 visible: Theme.currentThemeId !== "builtin.custom"
                 text: Theme.currentThemeId === "builtin.dms" ? Theme.dmsStatus
-                    : "Choose Custom to configure colors, layout, background effects, and miniplayer styling."
+                    : "Choose Custom to adjust colors, corner radius, spacing, and animation."
                 wrapMode: Text.Wrap
             }
             ScrollView {
@@ -119,7 +149,7 @@ ColumnLayout {
                     width: customScroll.availableWidth
                     spacing: 10
                     Repeater {
-                        model: Theme.customFields
+                        model: settings.visibleCustomFields
                         delegate: ColumnLayout {
                             id: field
                             required property var modelData
@@ -128,7 +158,7 @@ ColumnLayout {
                             spacing: 4
                             Label { color: Theme.primaryText;
                                 visible: field.index === 0
-                                    || Theme.customFields[field.index - 1].group !== field.modelData.group
+                                    || settings.visibleCustomFields[field.index - 1].group !== field.modelData.group
                                 text: field.modelData.group
                                 font.bold: true
                                 font.pixelSize: 18
