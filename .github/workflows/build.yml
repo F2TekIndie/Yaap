@@ -116,7 +116,7 @@ jobs:
         run: |
           git clone --branch "$VCPKG_TAG" --depth 1 https://github.com/microsoft/vcpkg "$RUNNER_TEMP/vcpkg"
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
-          "$RUNNER_TEMP/vcpkg/vcpkg" install catch2 ffmpeg miniaudio --classic
+          "$RUNNER_TEMP/vcpkg/vcpkg" install catch2 nasm ffmpeg miniaudio --classic
       - name: Configure, build, and test with sanitizers
         shell: bash
         env:
