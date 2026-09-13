@@ -6,6 +6,12 @@ Jellyfin, and out-of-process provider extensions through FFmpeg and miniaudio.
 Its interface is frameless, supports a compact miniplayer, and can be restyled
 with validated third-party theme packages.
 
+The [`niri_dms-integration`](https://github.com/F2TekIndie/Yaap/tree/niri_dms-integration)
+branch contains the Linux desktop-shell integration work for Niri and
+DankMaterialShell. It is available alongside this cross-platform master branch
+for users who want the shell-specific playback, activation, tray, and theme
+integration changes.
+
 ## Sample themes
 
 These screenshots were captured from the actual Windows Release application at
@@ -145,6 +151,14 @@ AppImage: system libraries (including system-installed FFmpeg), graphics drivers
 and Linux Secret Service remain host dependencies. Clean-machine validation and
 dependency license/source compliance remain release gates. A custom
 `YAAP_DISTRIBUTION_ROOT` places Linux output in its `linux` subdirectory.
+
+## Niri and DankMaterialShell
+
+The master branch provides the portable Linux build and MPRIS provider support.
+The `niri_dms-integration` branch layers Niri-aware window activation,
+background playback, a system-tray menu, and DankMaterialShell theme following
+on top. These features require a running Wayland session with Niri and DMS (or
+compatible Quickshell services); they are not required for normal Linux builds.
 
 ## Extension documentation
 
