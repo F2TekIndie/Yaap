@@ -62,7 +62,7 @@ jobs:
             "$RUNNER_TEMP/vcpkg/vcpkg.exe" install catch2:x64-windows ffmpeg:x64-windows miniaudio:x64-windows --classic
           else
             "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
-            "$RUNNER_TEMP/vcpkg/vcpkg" install catch2 ffmpeg miniaudio --classic
+            "$RUNNER_TEMP/vcpkg/vcpkg" install catch2 nasm ffmpeg miniaudio --classic
           fi
       - name: Configure
         shell: bash
